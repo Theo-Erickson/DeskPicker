@@ -8,6 +8,8 @@
     <RootNamespace>DeskPicker</RootNamespace>
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
+    <!-- Drawn by tools/make-deskpicker-icon.ps1 -->
+    <ApplicationIcon>..\deskpicker.ico</ApplicationIcon>
     <Version>0.1.0</Version>
     <Product>DeskPicker</Product>
     <Description>Pick which GitHub account GitHub Desktop opens as - run several side by side</Description>
@@ -28,6 +30,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <AvaloniaResource Include="..\deskpicker.ico" Link="deskpicker.ico" />
     <AvaloniaResource Include="..\assets\fonts\*.ttf" Link="Assets\Fonts\%(Filename)%(Extension)" />
   </ItemGroup>
 

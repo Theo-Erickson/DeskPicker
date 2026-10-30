@@ -37,6 +37,7 @@ namespace DeskPicker
             this.SetResourceReference(BackgroundProperty, "Bg");
             this.SetResourceReference(ForegroundProperty, "Text");
             UseLayoutRounding = true;
+            try { Icon = new WindowIcon(Avalonia.Platform.AssetLoader.Open(new Uri("avares://DeskPicker/deskpicker.ico"))); } catch { }
 
             profiles = Profiles.Load();
 
