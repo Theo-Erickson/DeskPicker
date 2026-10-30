@@ -86,6 +86,24 @@ b1=$(hits "$B"); a1=$(hits "$DEFAULT")
 result "relay to B reached B" "$([ "$b1" -gt "$b0" ] && echo yes || echo no) ($b0->$b1)"
 result "relay to B also reached default" "$([ "$a1" -gt "$a0" ] && echo yes || echo no)"
 
+if [ -n "${DESKPICKER:-}" ]; then
+  echo "== DeskPicker itself"
+  R=$("$DESKPICKER" --ci-running)
+  echo "$R"
+  result "DeskPicker sees default copy running" "$(echo "$R" | grep -qxF "$DEFAULT" && echo yes || echo no)"
+  result "DeskPicker sees copy B running" "$(echo "$R" | grep -qxF "$B" && echo yes || echo no)"
+  result "DeskPicker running folders" "$(echo "$R" | grep -c .)"
+  b0=$(hits "$B")
+  "$DESKPICKER" --ci-relay "$B" > /tmp/dprelay.out 2>&1 &
+  DP=$!
+  sleep 3
+  xdg-open "$LINK" >/dev/null 2>&1
+  wait $DP; rc=$?
+  sleep 8
+  result "DeskPicker relay" "$(tail -1 /tmp/dprelay.out) (exit $rc)"
+  result "DeskPicker relay reached B" "$([ "$(hits "$B")" -gt "$b0" ] && echo yes || echo no) ($b0->$(hits "$B"))"
+fi
+
 echo "== GIT_CONFIG_GLOBAL"
 runenv "GIT_CONFIG_GLOBAL=$GITCFG" --user-data-dir="$C" >/tmp/c.out 2>&1 &
 waitlog "$C"; sleep 5
@@ -98,11 +116,22 @@ for d in /proc/[0-9]*; do
   tot=$((tot+1))
   tr '\0' '\n' < "$d/environ" 2>/dev/null | grep -qx "GIT_CONFIG_GLOBAL=$GITCFG" && n=$((n+1))
 done
-result "GIT_CONFIG_GLOBAL in copy C's processes" "$n of $tot (main pid ${P:-none})"
-for d in /proc/[0-9]*; do
-  tr '\0' '\n' < "$d/environ" 2>/dev/null | grep -qx "GIT_CONFIG_GLOBAL=$GITCFG" || continue
-  echo "has it: $(tr '\0' ' ' < "$d/cmdline" | cut -c1-160)"
-done
+result "GIT_CONFIG_GLOBAL in copy C's /proc environ" "$n of $tot (main pid ${P:-none})"
+if [ "$KIND" = flatpak ]; then
+  # --env reaches the sandbox, and Desktop inherits it like any process there.
+  V=$(flatpak run --env="GIT_CONFIG_GLOBAL=$GITCFG" --command=sh "$FLATPAK" -c 'printenv GIT_CONFIG_GLOBAL' 2>/dev/null)
+  result "flatpak run --env reaches the sandbox" "$([ "$V" = "$GITCFG" ] && echo yes || echo "no ($V)")"
+else
+  # Chromium wipes its environ for the process title, so watch what Desktop's main process
+  # passes to the processes it starts (Chromium's helpers) instead.
+  if command -v strace >/dev/null; then
+    E="$HOME/.config/GitHub Desktop-ProbeE"
+    timeout 25 strace -f -qq -e trace=execve -e signal=none -v -s 400 -o /tmp/st.txt \
+      env "GIT_CONFIG_GLOBAL=$GITCFG" github-desktop --no-sandbox --user-data-dir="$E" >/dev/null 2>&1
+    ex=$(grep -c 'execve(' /tmp/st.txt); wi=$(grep 'execve(' /tmp/st.txt | grep -cF "GIT_CONFIG_GLOBAL=$GITCFG")
+    result "execs from a Desktop started with GIT_CONFIG_GLOBAL that pass it on" "$wi of $ex"
+  fi
+fi
 if [ "$KIND" = flatpak ]; then
   result "gitconfig readable inside the sandbox" "$(flatpak run --command=cat "$FLATPAK" "$GITCFG" >/dev/null 2>&1 && echo yes || echo no)"
 fi

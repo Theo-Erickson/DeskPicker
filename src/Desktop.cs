@@ -145,14 +145,15 @@ namespace DeskPicker
         public static string Trim(string dir) { return dir.TrimEnd('\\', '/'); }
 
         // Command lines of Desktop's main processes: not Chromium's helpers (--type=), and
-        // not the short-lived copies that only pass a link along (--protocol-launcher).
+        // not the short-lived copies that only pass a link along (--protocol-launcher on
+        // Windows, the bare link on Linux).
         static IEnumerable<string> MainCommandLines()
         {
             IEnumerable<string> all;
             if (OperatingSystem.IsWindows()) all = WindowsCommandLines().Select(x => x.Value);
             else if (OperatingSystem.IsMacOS()) all = MacCommandLines();
             else all = LinuxCommandLines();
-            return all.Where(c => !c.Contains("--type=") && !c.Contains("--protocol-launcher"));
+            return all.Where(c => !c.Contains("--type=") && !c.Contains("--protocol-launcher") && !c.Contains("x-github-desktop-auth://"));
         }
 
         // Process id -> command line for every GitHubDesktop.exe.
@@ -184,19 +185,24 @@ namespace DeskPicker
 
         static IEnumerable<string> LinuxCommandLines()
         {
-            var list = new List<string>();
+            return LinuxProcesses()
+                .Where(x => x.Value.Length > 0 && Path.GetFileName(x.Value[0]).StartsWith("github-desktop", StringComparison.Ordinal))
+                .Select(x => string.Join(" ", x.Value))
+                .ToList();
+        }
+
+        // Process id -> arguments (argv[0] first) for every process we can see in /proc.
+        public static Dictionary<uint, string[]> LinuxProcesses()
+        {
+            var d = new Dictionary<uint, string[]>();
             foreach (var dir in Directory.GetDirectories("/proc"))
             {
-                if (!char.IsDigit(Path.GetFileName(dir)[0])) continue;
-                try
-                {
-                    var args = File.ReadAllText(Path.Combine(dir, "cmdline")).Split('\0');
-                    if (args.Length > 0 && Path.GetFileName(args[0]).StartsWith("github-desktop", StringComparison.Ordinal))
-                        list.Add(string.Join(" ", args.Where(a => a.Length > 0)));
-                }
+                uint pid;
+                if (!uint.TryParse(Path.GetFileName(dir), out pid)) continue;
+                try { d[pid] = File.ReadAllText(Path.Combine(dir, "cmdline")).Split('\0').Where(a => a.Length > 0).ToArray(); }
                 catch { }
             }
-            return list;
+            return d;
         }
     }
 }

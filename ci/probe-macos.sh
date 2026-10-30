@@ -68,22 +68,31 @@ result "Apple Event relay also reached default" "$([ "$a1" -gt "$a0" ] && echo y
 shot 2-after-apple-event
 
 echo "== handler swap: a stand-in app catches the link"
-rm -rf /tmp/Catcher.app /tmp/caught
-osacompile -o /tmp/Catcher.app -e 'on open location u' -e 'do shell script "touch /tmp/caught"' -e 'end open location'
-PL=/tmp/Catcher.app/Contents/Info.plist
+rm -rf /tmp/caught
+CATCHER="$HOME/Applications/Catcher.app"
+mkdir -p "$HOME/Applications"; rm -rf "$CATCHER"
+osacompile -o "$CATCHER" -e 'on open location u' -e 'do shell script "touch /tmp/caught"' -e 'end open location'
+PL="$CATCHER/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier io.github.theo-erickson.deskpicker.probe" "$PL" 2>/dev/null \
   || /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string io.github.theo-erickson.deskpicker.probe" "$PL"
 /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" -c "Add :CFBundleURLTypes:0 dict" \
   -c "Add :CFBundleURLTypes:0:CFBundleURLName string probe" -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" \
   -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string x-github-desktop-auth" "$PL"
-codesign --force --sign - /tmp/Catcher.app
-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f /tmp/Catcher.app
+codesign --force --sign - "$CATCHER"
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f -R -trusted "$CATCHER"
+LSR=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+"$LSR" -dump 2>/dev/null | grep -i -B30 "x-github-desktop-auth" | grep -iE "^path:|bundle id:|claimed schemes|x-github-desktop-auth" | head -20
 result "LSSetDefaultHandlerForURLScheme(catcher)" "$($H sethandler x-github-desktop-auth io.github.theo-erickson.deskpicker.probe)"
 sleep 2
 result "handler after LS swap" "$($H handler x-github-desktop-auth)"
-result "NSWorkspace.setDefaultApplication(catcher)" "$($H setapp x-github-desktop-auth /tmp/Catcher.app)"
+result "NSWorkspace.setDefaultApplication(catcher)" "$($H setapp x-github-desktop-auth "$CATCHER")"
 sleep 2
 result "handler after NSWorkspace swap" "$($H handler x-github-desktop-auth)"
+defaults read com.apple.LaunchServices/com.apple.launchservices.secure LSHandlers 2>/dev/null | grep -B2 -A4 x-github-desktop-auth
+open "$CATCHER"; sleep 3
+result "handler after opening the catcher once" "$($H handler x-github-desktop-auth)"
+$H setapp x-github-desktop-auth "$CATCHER" >/dev/null; sleep 2
+result "handler after swap with catcher open" "$($H handler x-github-desktop-auth)"
 a0=$(hits "$DEFAULT"); b0=$(hits "$B")
 open "$LINK"; sleep 10
 result "swapped handler caught the link" "$([ -f /tmp/caught ] && echo yes || echo no)"

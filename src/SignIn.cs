@@ -90,9 +90,8 @@ namespace DeskPicker
 
         // ---------- passing the link along ----------
 
-        // Only Windows so far: elsewhere the link reaches Desktop another way (macOS sends
-        // it as an Apple Event), so there's nothing to read it from.
-        public static bool CanRelay { get { return OperatingSystem.IsWindows(); } }
+        // Windows and Linux, where the link passes through a process's command line.
+        public static bool CanRelay { get { return OperatingSystem.IsWindows() || OperatingSystem.IsLinux(); } }
 
         static readonly object gate = new object();
         static CancellationTokenSource watching;
@@ -110,23 +109,36 @@ namespace DeskPicker
                 watching?.Cancel();
                 watching = null;
                 watched = pending;
-                if (pending == null || !OperatingSystem.IsWindows()) return;   // CanRelay
+                if (pending == null || !CanRelay) return;
                 var cts = new CancellationTokenSource(Patience);
                 watching = cts;
                 Task.Run(() => Relay(pending.Profile, cts.Token));
             }
         }
 
-        static readonly Regex LinkArg = new Regex("--protocol-launcher\\s+\"?(x-github-desktop-auth://[^\"\\s]+)", RegexOptions.IgnoreCase);
+        static readonly Regex LinkArg = new Regex("\"?(x-github-desktop-auth://[^\"\\s]+)", RegexOptions.IgnoreCase);
 
-        [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+        // Short-lived processes that carry a link. On Windows that's "GitHubDesktop.exe
+        // --protocol-launcher <link>". On Linux the link is a plain argument, and several
+        // processes carry it on the way (xdg-open, then "github-desktop <link>", or
+        // "flatpak run ... <link>" for the Flatpak); whichever we see first will do.
+        static Dictionary<uint, string> LinkCarriers()
+        {
+            if (OperatingSystem.IsWindows()) return Desktop.WindowsCommandLines();
+            if (OperatingSystem.IsLinux())
+                return Desktop.LinuxProcesses()
+                    .Where(x => x.Value.Any(a => a.StartsWith("x-github-desktop-auth://", StringComparison.OrdinalIgnoreCase)))
+                    .ToDictionary(x => x.Key, x => string.Join(" ", x.Value));
+            return new Dictionary<uint, string>();
+        }
+
         static void Relay(Profile target, CancellationToken stop)
         {
             HashSet<uint> seen = null;
             while (!stop.IsCancellationRequested)
             {
                 Dictionary<uint, string> now;
-                try { now = Desktop.WindowsCommandLines(); }
+                try { now = LinkCarriers(); }
                 catch { now = new Dictionary<uint, string>(); }
                 if (seen == null) seen = new HashSet<uint>(now.Keys);   // what was already there doesn't count
                 foreach (var kv in now)
@@ -139,7 +151,7 @@ namespace DeskPicker
                     return;
                 }
                 // The launcher process lives for well under a second, so look often.
-                stop.WaitHandle.WaitOne(100);
+                stop.WaitHandle.WaitOne(50);
             }
         }
     }

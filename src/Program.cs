@@ -37,6 +37,18 @@ namespace DeskPicker
             int open = Array.IndexOf(args, "--open");
             if (open >= 0 && open + 1 < args.Length) return OpenByName(args[open + 1]);
 
+            // For the platform tests in ci/, with no window:
+            // --ci-running: prints the data folders whose Desktop is running.
+            // --ci-relay <data folder>: waits up to a minute for a sign-in link and hands it
+            // to the Desktop using that folder, the way the window does for a waiting profile.
+            if (args.Contains("--ci-running"))
+            {
+                foreach (var d in Desktop.RunningDirs()) Console.WriteLine(d);
+                return 0;
+            }
+            int relay = Array.IndexOf(args, "--ci-relay");
+            if (relay >= 0 && relay + 1 < args.Length) return RelayOnce(args[relay + 1]);
+
             bool first;
             using (var mutex = new Mutex(true, "DeskPicker.SingleInstance", out first))
             {
@@ -86,6 +98,19 @@ namespace DeskPicker
                 return 0;
             }
             catch (Exception e) { Log(e.ToString()); return 1; }
+        }
+
+        static int RelayOnce(string dataDir)
+        {
+            if (!SignIn.CanRelay) { Console.WriteLine("can't relay on this system"); return 2; }
+            var done = new ManualResetEventSlim();
+            SignIn.Relayed += delegate { done.Set(); };
+            SignIn.Watch(new SignIn.Pending { Profile = new Profile { name = "ci", dataDir = dataDir }, Since = DateTime.UtcNow });
+            Console.WriteLine("watching");
+            bool ok = done.Wait(TimeSpan.FromMinutes(1));
+            SignIn.Watch(null);
+            Console.WriteLine(ok ? "relayed" : "no link seen");
+            return ok ? 0 : 1;
         }
 
         static void Log(string text)
