@@ -67,6 +67,7 @@ namespace DeskPicker
                     .UsePlatformDetect()
                     .With(new Win32PlatformOptions { OverlayPopups = true })
                     .SetupWithoutStarting();
+                if (OperatingSystem.IsMacOS()) SignIn.ListenForLinks();
                 Dispatcher.UIThread.UnhandledException += (s, e) =>
                 {
                     Report(e.Exception);
@@ -107,7 +108,18 @@ namespace DeskPicker
             SignIn.Relayed += delegate { done.Set(); };
             SignIn.Watch(new SignIn.Pending { Profile = new Profile { name = "ci", dataDir = dataDir }, Since = DateTime.UtcNow });
             Console.WriteLine("watching");
-            bool ok = done.Wait(TimeSpan.FromMinutes(1));
+            bool ok;
+            if (OperatingSystem.IsMacOS())
+            {
+                // The link arrives as an Apple Event, which needs the app's event loop.
+                AppBuilder.Configure<App>().UsePlatformDetect().SetupWithoutStarting();
+                SignIn.ListenForLinks();
+                var stop = new CancellationTokenSource(TimeSpan.FromMinutes(1));
+                SignIn.Relayed += delegate { stop.Cancel(); };
+                Dispatcher.UIThread.MainLoop(stop.Token);
+                ok = done.IsSet;
+            }
+            else ok = done.Wait(TimeSpan.FromMinutes(1));
             SignIn.Watch(null);
             Console.WriteLine(ok ? "relayed" : "no link seen");
             return ok ? 0 : 1;

@@ -67,6 +67,27 @@ result "Apple Event relay reached B" "$([ "$b1" -gt "$b0" ] && echo yes || echo 
 result "Apple Event relay also reached default" "$([ "$a1" -gt "$a0" ] && echo yes || echo no)"
 shot 2-after-apple-event
 
+if [ -n "${DESKPICKER_APP:-}" ]; then
+  echo "== DeskPicker.app itself"
+  DP="$DESKPICKER_APP/Contents/MacOS/DeskPicker"
+  R=$("$DP" --ci-running); echo "$R"
+  result "DeskPicker sees default copy running" "$(echo "$R" | grep -qxF "$DEFAULT" && echo yes || echo no)"
+  result "DeskPicker sees copy B running" "$(echo "$R" | grep -qxF "$B" && echo yes || echo no)"
+  a0=$(hits "$DEFAULT"); b0=$(hits "$B")
+  "$DP" --ci-relay "$B" > /tmp/dprelay.out 2>&1 &
+  DPP=$!
+  sleep 6
+  result "handler while DeskPicker waits" "$($H handler x-github-desktop-auth)"
+  open "$LINK"
+  wait $DPP; rc=$?
+  sleep 6
+  result "DeskPicker relay" "$(grep -E 'relayed|no link|relay' /tmp/dprelay.out | tail -1) (exit $rc)"
+  result "DeskPicker relay reached B" "$([ "$(hits "$B")" -gt "$b0" ] && echo yes || echo no) ($b0->$(hits "$B"))"
+  result "DeskPicker relay also reached default" "$([ "$(hits "$DEFAULT")" -gt "$a0" ] && echo yes || echo no)"
+  result "handler after DeskPicker is done" "$($H handler x-github-desktop-auth)"
+  shot 2b-after-deskpicker
+fi
+
 echo "== handler swap: a stand-in app catches the link"
 rm -rf /tmp/caught
 CATCHER="$HOME/Applications/Catcher.app"

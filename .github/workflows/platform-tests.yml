@@ -34,8 +34,18 @@ jobs:
         run: |
           brew install --cask github
           xattr -dr com.apple.quarantine "/Applications/GitHub Desktop.app" || true
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - name: Build DeskPicker.app
+        run: |
+          ./build.sh
+          mkdir -p ~/Applications
+          cp -R dist/osx-*/DeskPicker.app ~/Applications/
       - name: Probe
         run: bash ci/probe-macos.sh
+        env:
+          DESKPICKER_APP: /Users/runner/Applications/DeskPicker.app
       - uses: actions/upload-artifact@v5
         if: always()
         with:
