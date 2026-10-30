@@ -1,0 +1,114 @@
+#!/bin/bash
+# Checks, on macOS, the things DeskPicker relies on: a second Desktop copy started with
+# 'open -n', which copy a browser sign-in link reaches, ways of handing the link to a chosen
+# copy, and whether 'open --env GIT_CONFIG_GLOBAL=...' reaches Desktop.
+# Only a made-up link is used, and links are never printed.
+set -u
+cd "$(dirname "$0")"
+LINK='x-github-desktop-auth://oauth?code=deskpicker-ci-fake&state=deskpicker-ci-fake'
+APP="/Applications/GitHub Desktop.app"
+SUP="$HOME/Library/Application Support"
+DEFAULT="$SUP/GitHub Desktop"
+B="$SUP/GitHub Desktop-ProbeB"
+C="$SUP/GitHub Desktop-ProbeC"
+D="$SUP/GitHub Desktop-ProbeD"
+GITCFG="$HOME/.deskpicker/probe.gitconfig"
+SHOTS="${SHOTS:-/tmp/shots}"
+mkdir -p "$B" "$C" "$D" "$(dirname "$GITCFG")" "$SHOTS"
+printf '[user]\n\tname = DeskPicker Probe\n\temail = probe@example.invalid\n' > "$GITCFG"
+swiftc -O -o /tmp/mac-helper mac-helper.swift -framework AppKit || exit 1
+H=/tmp/mac-helper
+
+RESULTS=()
+result() { RESULTS+=("| $1 | $2 |"); echo "RESULT: $1 => $2"; }
+redact() { sed -E 's#x-github-desktop-auth://[^ ]*#<link>#g'; }
+hits() { cat "$1"/logs/*.desktop.production.log 2>/dev/null | grep -c "Processing protocol url"; }
+mains() { ps -axww -o pid=,args= | grep "GitHub Desktop.app/Contents/MacOS/GitHub Desktop" | grep -v -- '--type=' | grep -v grep; }
+pid_of() { mains | grep -F -- "--user-data-dir=$1" | head -1 | awk '{print $1}'; }
+default_pid() { mains | grep -v -- '--user-data-dir' | head -1 | awk '{print $1}'; }
+waitlog() { for _ in $(seq 90); do ls "$1"/logs/*.desktop.production.log >/dev/null 2>&1 && return 0; sleep 1; done; return 1; }
+shot() { screencapture -x "$SHOTS/$1.png" 2>/dev/null; }
+
+result "handler before any launch" "$($H handler x-github-desktop-auth)"
+
+echo "== start default copy, then copy B with open -n"
+open -a "$APP"
+waitlog "$DEFAULT" && result "default copy started" yes || result "default copy started" "no (no log)"
+sleep 5
+open -n -a "$APP" --args --user-data-dir="$B"
+waitlog "$B" && result "copy B started alongside (open -n)" yes || result "copy B started alongside (open -n)" "no (no log)"
+sleep 8
+mains
+result "main processes (no --type=)" "$(mains | wc -l | tr -d ' ')"
+result "handler after launch" "$($H handler x-github-desktop-auth)"
+shot 1-two-copies
+
+echo "== browser-style link via open"
+a0=$(hits "$DEFAULT"); b0=$(hits "$B")
+open "$LINK"; sleep 8
+a1=$(hits "$DEFAULT"); b1=$(hits "$B")
+result "open link reached default copy" "$([ "$a1" -gt "$a0" ] && echo yes || echo no) ($a0->$a1)"
+result "open link reached copy B" "$([ "$b1" -gt "$b0" ] && echo yes || echo no) ($b0->$b1)"
+result "processes after open link" "$(mains | wc -l | tr -d ' ')"
+
+echo "== relay 1: link as an argument (open -n ... --args --user-data-dir=B <link>)"
+b0=$(hits "$B")
+open -n -a "$APP" --args --user-data-dir="$B" "$LINK"; sleep 8
+b1=$(hits "$B")
+result "argv relay reached B" "$([ "$b1" -gt "$b0" ] && echo yes || echo no) ($b0->$b1)"
+
+echo "== relay 2: Apple Event to copy B's process"
+PB=$(pid_of "$B"); PA=$(default_pid)
+b0=$(hits "$B"); a0=$(hits "$DEFAULT")
+result "AESendMessage to B (pid ${PB:-none})" "$($H gurl "${PB:-0}" "$LINK")"
+sleep 8
+b1=$(hits "$B"); a1=$(hits "$DEFAULT")
+result "Apple Event relay reached B" "$([ "$b1" -gt "$b0" ] && echo yes || echo no) ($b0->$b1)"
+result "Apple Event relay also reached default" "$([ "$a1" -gt "$a0" ] && echo yes || echo no)"
+shot 2-after-apple-event
+
+echo "== handler swap: a stand-in app catches the link"
+rm -rf /tmp/Catcher.app /tmp/caught
+osacompile -o /tmp/Catcher.app -e 'on open location u' -e 'do shell script "touch /tmp/caught"' -e 'end open location'
+PL=/tmp/Catcher.app/Contents/Info.plist
+/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier io.github.theo-erickson.deskpicker.probe" "$PL" 2>/dev/null \
+  || /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string io.github.theo-erickson.deskpicker.probe" "$PL"
+/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" -c "Add :CFBundleURLTypes:0 dict" \
+  -c "Add :CFBundleURLTypes:0:CFBundleURLName string probe" -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" \
+  -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string x-github-desktop-auth" "$PL"
+codesign --force --sign - /tmp/Catcher.app
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f /tmp/Catcher.app
+result "LSSetDefaultHandlerForURLScheme(catcher)" "$($H sethandler x-github-desktop-auth io.github.theo-erickson.deskpicker.probe)"
+result "handler after swap" "$($H handler x-github-desktop-auth)"
+a0=$(hits "$DEFAULT"); b0=$(hits "$B")
+open "$LINK"; sleep 10
+result "swapped handler caught the link" "$([ -f /tmp/caught ] && echo yes || echo no)"
+result "default copy got it anyway" "$([ "$(hits "$DEFAULT")" -gt "$a0" ] && echo yes || echo no)"
+shot 3-after-swap
+open -n -a "$APP" --args --user-data-dir="$D"; waitlog "$D"; sleep 8
+result "handler after starting another Desktop copy" "$($H handler x-github-desktop-auth)"
+result "restore handler to Desktop" "$($H sethandler x-github-desktop-auth com.github.GitHubClient)"
+
+echo "== GIT_CONFIG_GLOBAL via open --env"
+open -n -a "$APP" --env "GIT_CONFIG_GLOBAL=$GITCFG" --args --user-data-dir="$C"
+waitlog "$C"; sleep 5
+PC=$(pid_of "$C")
+if [ -n "$PC" ] && sudo launchctl procinfo "$PC" 2>/dev/null | grep -q "GIT_CONFIG_GLOBAL => $GITCFG"; then
+  result "GIT_CONFIG_GLOBAL in copy C's environment" yes
+elif [ -n "$PC" ] && ps eww -o command= -p "$PC" | grep -qF "GIT_CONFIG_GLOBAL=$GITCFG"; then
+  result "GIT_CONFIG_GLOBAL in copy C's environment" "yes (ps eww)"
+else
+  result "GIT_CONFIG_GLOBAL in copy C's environment" "no (pid ${PC:-none})"
+  [ -n "$PC" ] && sudo launchctl procinfo "$PC" 2>/dev/null | grep -i -A3 'environment' | head -20
+fi
+shot 4-end
+
+echo "== Desktop log lines about protocols (links redacted)"
+for d in "$DEFAULT" "$B"; do echo "-- $d"; cat "$d"/logs/*.desktop.production.log 2>/dev/null | grep -i 'protocol\|url' | redact | tail -10; done
+
+{
+  echo "### macOS $(sw_vers -productVersion)"; echo; echo "| Check | Result |"; echo "|---|---|"
+  printf '%s\n' "${RESULTS[@]}"; echo
+} >> "${GITHUB_STEP_SUMMARY:-/dev/stdout}"
+pkill -f "GitHub Desktop.app/Contents/MacOS/GitHub Desktop"
+exit 0
