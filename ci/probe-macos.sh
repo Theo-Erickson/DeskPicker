@@ -21,6 +21,9 @@ H=/tmp/mac-helper
 
 RESULTS=()
 result() { RESULTS+=("| $1 | $2 |"); echo "RESULT: $1 => $2"; }
+# A check DeskPicker depends on: the job fails unless it says yes.
+FAILED=0
+must() { result "$1" "$2"; case "$2" in yes*) ;; *) FAILED=1; echo "::error::$1: $2" ;; esac; }
 redact() { sed -E 's#x-github-desktop-auth://[^ ]*#<link>#g'; }
 hits() { cat "$1"/logs/*.desktop.production.log 2>/dev/null | grep -c "Processing protocol url"; }
 mains() { ps -axww -o pid=,args= | grep "GitHub Desktop.app/Contents/MacOS/GitHub Desktop" | grep -v -- '--type=' | grep -v grep; }
@@ -36,7 +39,7 @@ open -a "$APP"
 waitlog "$DEFAULT" && result "default copy started" yes || result "default copy started" "no (no log)"
 sleep 5
 open -n -a "$APP" --args --user-data-dir="$B"
-waitlog "$B" && result "copy B started alongside (open -n)" yes || result "copy B started alongside (open -n)" "no (no log)"
+waitlog "$B" && must "copy B started alongside (open -n)" yes || must "copy B started alongside (open -n)" "no (no log)"
 sleep 8
 mains
 result "main processes (no --type=)" "$(mains | wc -l | tr -d ' ')"
@@ -71,20 +74,20 @@ if [ -n "${DESKPICKER_APP:-}" ]; then
   echo "== DeskPicker.app itself"
   DP="$DESKPICKER_APP/Contents/MacOS/DeskPicker"
   R=$("$DP" --ci-running); echo "$R"
-  result "DeskPicker sees default copy running" "$(echo "$R" | grep -qxF "$DEFAULT" && echo yes || echo no)"
-  result "DeskPicker sees copy B running" "$(echo "$R" | grep -qxF "$B" && echo yes || echo no)"
+  must "DeskPicker sees default copy running" "$(echo "$R" | grep -qxF "$DEFAULT" && echo yes || echo no)"
+  must "DeskPicker sees copy B running" "$(echo "$R" | grep -qxF "$B" && echo yes || echo no)"
   a0=$(hits "$DEFAULT"); b0=$(hits "$B")
   "$DP" --ci-relay "$B" > /tmp/dprelay.out 2>&1 &
   DPP=$!
   sleep 6
-  result "handler while DeskPicker waits" "$($H handler x-github-desktop-auth)"
+  must "handler while DeskPicker waits" "$($H handler x-github-desktop-auth | grep -q DeskPicker.app && echo yes || echo no)"
   open "$LINK"
   wait $DPP; rc=$?
   sleep 6
   result "DeskPicker relay" "$(grep -E 'relayed|no link|relay' /tmp/dprelay.out | tail -1) (exit $rc)"
-  result "DeskPicker relay reached B" "$([ "$(hits "$B")" -gt "$b0" ] && echo yes || echo no) ($b0->$(hits "$B"))"
+  must "DeskPicker relay reached B" "$([ "$(hits "$B")" -gt "$b0" ] && echo yes || echo no) ($b0->$(hits "$B"))"
   result "DeskPicker relay also reached default" "$([ "$(hits "$DEFAULT")" -gt "$a0" ] && echo yes || echo no)"
-  result "handler after DeskPicker is done" "$($H handler x-github-desktop-auth)"
+  must "handler after DeskPicker is done" "$($H handler x-github-desktop-auth | grep -q "GitHub Desktop.app" && echo "yes (Desktop)" || echo no)"
   shot 2b-after-deskpicker
 fi
 
@@ -137,11 +140,11 @@ open -n -a "$APP" --env "GIT_CONFIG_GLOBAL=$GITCFG" --args --user-data-dir="$C"
 waitlog "$C"; sleep 5
 PC=$(pid_of "$C")
 if [ -n "$PC" ] && sudo launchctl procinfo "$PC" 2>/dev/null | grep -q "GIT_CONFIG_GLOBAL => $GITCFG"; then
-  result "GIT_CONFIG_GLOBAL in copy C's environment" yes
+  must "GIT_CONFIG_GLOBAL in copy C's environment" yes
 elif [ -n "$PC" ] && ps eww -o command= -p "$PC" | grep -qF "GIT_CONFIG_GLOBAL=$GITCFG"; then
-  result "GIT_CONFIG_GLOBAL in copy C's environment" "yes (ps eww)"
+  must "GIT_CONFIG_GLOBAL in copy C's environment" "yes (ps eww)"
 else
-  result "GIT_CONFIG_GLOBAL in copy C's environment" "no (pid ${PC:-none})"
+  must "GIT_CONFIG_GLOBAL in copy C's environment" "no (pid ${PC:-none})"
   [ -n "$PC" ] && sudo launchctl procinfo "$PC" 2>/dev/null | grep -i -A3 'environment' | head -20
 fi
 shot 4-end
@@ -154,4 +157,4 @@ for d in "$DEFAULT" "$B"; do echo "-- $d"; cat "$d"/logs/*.desktop.production.lo
   printf '%s\n' "${RESULTS[@]}"; echo
 } >> "${GITHUB_STEP_SUMMARY:-/dev/stdout}"
 pkill -f "GitHub Desktop.app/Contents/MacOS/GitHub Desktop"
-exit 0
+exit $FAILED

@@ -27,6 +27,9 @@ printf '[user]\n\tname = DeskPicker Probe\n\temail = probe@example.invalid\n' > 
 
 RESULTS=()
 result() { RESULTS+=("| $1 | $2 |"); echo "RESULT: $1 => $2"; }
+# A check DeskPicker depends on: the job fails unless it says yes.
+FAILED=0
+must() { result "$1" "$2"; case "$2" in yes*) ;; *) FAILED=1; echo "::error::$1: $2" ;; esac; }
 redact() { sed -E 's#x-github-desktop-auth://[^ ]*#<link>#g'; }
 hits() { cat "$1"/logs/*.desktop.production.log 2>/dev/null | grep -c "Processing protocol url"; }
 
@@ -54,7 +57,7 @@ run >/tmp/a.out 2>&1 &
 waitlog "$DEFAULT" && result "default copy started" yes || result "default copy started" "no (no log)"
 sleep 5
 run --user-data-dir="$B" >/tmp/b.out 2>&1 &
-waitlog "$B" && result "copy B started alongside" yes || result "copy B started alongside" "no (no log)"
+waitlog "$B" && must "copy B started alongside" yes || must "copy B started alongside" "no (no log)"
 sleep 8
 echo "-- main processes"; mains | redact
 result "main processes (no --type=)" "$(mains | wc -l)"
@@ -90,8 +93,8 @@ if [ -n "${DESKPICKER:-}" ]; then
   echo "== DeskPicker itself"
   R=$("$DESKPICKER" --ci-running)
   echo "$R"
-  result "DeskPicker sees default copy running" "$(echo "$R" | grep -qxF "$DEFAULT" && echo yes || echo no)"
-  result "DeskPicker sees copy B running" "$(echo "$R" | grep -qxF "$B" && echo yes || echo no)"
+  must "DeskPicker sees default copy running" "$(echo "$R" | grep -qxF "$DEFAULT" && echo yes || echo no)"
+  must "DeskPicker sees copy B running" "$(echo "$R" | grep -qxF "$B" && echo yes || echo no)"
   result "DeskPicker running folders" "$(echo "$R" | grep -c .)"
   b0=$(hits "$B")
   "$DESKPICKER" --ci-relay "$B" > /tmp/dprelay.out 2>&1 &
@@ -101,7 +104,7 @@ if [ -n "${DESKPICKER:-}" ]; then
   wait $DP; rc=$?
   sleep 8
   result "DeskPicker relay" "$(tail -1 /tmp/dprelay.out) (exit $rc)"
-  result "DeskPicker relay reached B" "$([ "$(hits "$B")" -gt "$b0" ] && echo yes || echo no) ($b0->$(hits "$B"))"
+  must "DeskPicker relay reached B" "$([ "$(hits "$B")" -gt "$b0" ] && echo yes || echo no) ($b0->$(hits "$B"))"
 fi
 
 echo "== GIT_CONFIG_GLOBAL"
@@ -120,7 +123,7 @@ result "GIT_CONFIG_GLOBAL in copy C's /proc environ" "$n of $tot (main pid ${P:-
 if [ "$KIND" = flatpak ]; then
   # --env reaches the sandbox, and Desktop inherits it like any process there.
   V=$(flatpak run --env="GIT_CONFIG_GLOBAL=$GITCFG" --command=sh "$FLATPAK" -c 'printenv GIT_CONFIG_GLOBAL' 2>/dev/null)
-  result "flatpak run --env reaches the sandbox" "$([ "$V" = "$GITCFG" ] && echo yes || echo "no ($V)")"
+  must "flatpak run --env reaches the sandbox" "$([ "$V" = "$GITCFG" ] && echo yes || echo "no ($V)")"
 else
   # Chromium wipes its environ for the process title, so watch what Desktop's main process
   # passes to the processes it starts (Chromium's helpers) instead.
@@ -129,7 +132,7 @@ else
     timeout 25 strace -f -qq -e trace=execve -e signal=none -v -s 400 -o /tmp/st.txt \
       env "GIT_CONFIG_GLOBAL=$GITCFG" github-desktop --no-sandbox --user-data-dir="$E" >/dev/null 2>&1
     ex=$(grep -c 'execve(' /tmp/st.txt); wi=$(grep 'execve(' /tmp/st.txt | grep -cF "GIT_CONFIG_GLOBAL=$GITCFG")
-    result "execs from a Desktop started with GIT_CONFIG_GLOBAL that pass it on" "$wi of $ex"
+    must "execs from a Desktop started with GIT_CONFIG_GLOBAL that pass it on" "$([ "$wi" -gt 0 ] && [ "$wi" = "$ex" ] && echo yes || echo no) ($wi of $ex)"
   fi
 fi
 if [ "$KIND" = flatpak ]; then
@@ -144,4 +147,4 @@ for d in "$DEFAULT" "$B"; do echo "-- $d"; cat "$d"/logs/*.desktop.production.lo
   printf '%s\n' "${RESULTS[@]}"; echo
 } >> "${GITHUB_STEP_SUMMARY:-/dev/stdout}"
 pkill -f github-desktop; pkill -f "$FLATPAK"
-exit 0
+exit $FAILED
