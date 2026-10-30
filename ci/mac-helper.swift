@@ -1,7 +1,8 @@
 // Small macOS helpers for ci/probe-macos.sh.
 //   handler <scheme>               prints the app that opens <scheme>:// links
 //   sethandler <scheme> <bundleid> makes <bundleid> the app that opens them
-//   gurl <pid> <url>               sends the "open this URL" Apple Event to one process
+//   setapp <scheme> <app path>     the same through NSWorkspace, which reports errors
+//   gurl <pid> <url>              sends the "open this URL" Apple Event to one process
 import AppKit
 import CoreServices
 
@@ -12,6 +13,16 @@ case "handler":
     print(url?.path ?? "none")
 case "sethandler":
     print(LSSetDefaultHandlerForURLScheme(a[2] as CFString, a[3] as CFString))
+case "setapp":
+    var out = "timeout"
+    var finished = false
+    NSWorkspace.shared.setDefaultApplication(at: URL(fileURLWithPath: a[3]), toOpenURLsWithScheme: a[2]) { err in
+        out = err.map { "\($0)" } ?? "ok"
+        finished = true
+    }
+    let until = Date() + 20
+    while !finished && Date() < until { RunLoop.main.run(until: Date() + 0.1) }
+    print(out)
 case "gurl":
     let target = NSAppleEventDescriptor(processIdentifier: pid_t(a[2])!)
     let ev = NSAppleEventDescriptor(eventClass: AEEventClass(kInternetEventClass), eventID: AEEventID(kAEGetURL),

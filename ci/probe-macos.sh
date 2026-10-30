@@ -79,7 +79,11 @@ PL=/tmp/Catcher.app/Contents/Info.plist
 codesign --force --sign - /tmp/Catcher.app
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f /tmp/Catcher.app
 result "LSSetDefaultHandlerForURLScheme(catcher)" "$($H sethandler x-github-desktop-auth io.github.theo-erickson.deskpicker.probe)"
-result "handler after swap" "$($H handler x-github-desktop-auth)"
+sleep 2
+result "handler after LS swap" "$($H handler x-github-desktop-auth)"
+result "NSWorkspace.setDefaultApplication(catcher)" "$($H setapp x-github-desktop-auth /tmp/Catcher.app)"
+sleep 2
+result "handler after NSWorkspace swap" "$($H handler x-github-desktop-auth)"
 a0=$(hits "$DEFAULT"); b0=$(hits "$B")
 open "$LINK"; sleep 10
 result "swapped handler caught the link" "$([ -f /tmp/caught ] && echo yes || echo no)"
@@ -88,6 +92,15 @@ shot 3-after-swap
 open -n -a "$APP" --args --user-data-dir="$D"; waitlog "$D"; sleep 8
 result "handler after starting another Desktop copy" "$($H handler x-github-desktop-auth)"
 result "restore handler to Desktop" "$($H sethandler x-github-desktop-auth com.github.GitHubClient)"
+
+echo "== link with the default copy closed (B and D open)"
+kill "$(default_pid)" 2>/dev/null; sleep 5
+result "main processes after closing default" "$(mains | wc -l | tr -d ' ')"
+b0=$(hits "$B"); d0=$(hits "$D")
+open "$LINK"; sleep 10
+result "open link reached B (started first)" "$([ "$(hits "$B")" -gt "$b0" ] && echo yes || echo no)"
+result "open link reached D (started last)" "$([ "$(hits "$D")" -gt "$d0" ] && echo yes || echo no)"
+result "open link started a new default copy" "$([ -n "$(default_pid)" ] && echo yes || echo no)"
 
 echo "== GIT_CONFIG_GLOBAL via open --env"
 open -n -a "$APP" --env "GIT_CONFIG_GLOBAL=$GITCFG" --args --user-data-dir="$C"

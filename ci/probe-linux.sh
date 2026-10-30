@@ -58,7 +58,8 @@ waitlog "$B" && result "copy B started alongside" yes || result "copy B started 
 sleep 8
 echo "-- main processes"; mains | redact
 result "main processes (no --type=)" "$(mains | wc -l)"
-result "argv[0] of copy B" "$(mains | grep -F -- "--user-data-dir=$B" | head -1 | cut -d' ' -f2)"
+mains | grep -F -- "--user-data-dir=$B" | cut -d' ' -f2- | cut -c1-160 | sort -u | while read -r l; do echo "copy B process: $l"; done
+result "copy B processes (no --type=)" "$(mains | grep -F -- "--user-data-dir=$B" | cut -d' ' -f2 | sort | uniq -c | tr -s ' ' | tr '\n' ';')"
 
 echo "== browser-style link via xdg-open, watching /proc for the launcher"
 ( end=$((SECONDS+15)); while [ $SECONDS -lt $end ]; do procs; sleep 0.05; done ) | sort -u -k1,1n > /tmp/seen.txt &
@@ -72,8 +73,10 @@ a1=$(hits "$DEFAULT"); b1=$(hits "$B")
 result "xdg-open link reached default copy" "$([ "$a1" -gt "$a0" ] && echo yes || echo no) ($a0->$a1)"
 result "xdg-open link reached copy B" "$([ "$b1" -gt "$b0" ] && echo yes || echo no) ($b0->$b1)"
 L=$(grep -F 'x-github-desktop-auth://' /tmp/seen.txt | grep -v -- '--type=')
-result "launcher process seen in /proc with link in argv" "$([ -n "$L" ] && echo yes || echo no)"
-[ -n "$L" ] && result "launcher command line" "\`$(echo "$L" | head -1 | cut -d' ' -f2- | redact)\`"
+result "processes seen in /proc with link in argv" "$(echo "$L" | grep -c .)"
+echo "$L" | while read -r _ cmd; do [ -n "$cmd" ] && echo "link-carrying process: $(echo "$cmd" | redact | cut -c1-220)"; done
+echo "$L" | while read -r _ cmd; do [ -n "$cmd" ] && echo "\`$(echo "$cmd" | redact | cut -c1-160)\`"; done | sort -u > /tmp/linkprocs.txt
+while read -r l; do result "link-carrying process" "$l"; done < /tmp/linkprocs.txt
 
 echo "== relay: hand the link to copy B directly"
 b0=$(hits "$B"); a0=$(hits "$DEFAULT")
@@ -86,12 +89,20 @@ result "relay to B also reached default" "$([ "$a1" -gt "$a0" ] && echo yes || e
 echo "== GIT_CONFIG_GLOBAL"
 runenv "GIT_CONFIG_GLOBAL=$GITCFG" --user-data-dir="$C" >/tmp/c.out 2>&1 &
 waitlog "$C"; sleep 5
-P=$(pid_of "$C")
-if [ -n "$P" ] && tr '\0' '\n' < /proc/$P/environ | grep -qx "GIT_CONFIG_GLOBAL=$GITCFG"; then
-  result "GIT_CONFIG_GLOBAL in copy C's environment" yes
-else
-  result "GIT_CONFIG_GLOBAL in copy C's environment" "no (pid ${P:-none})"
-fi
+# Chromium rewrites /proc/<pid>/environ of its own processes (for the process title), so
+# also look at the ones it doesn't: anything of copy C's that has the variable got it from
+# the main process.
+P=$(pid_of "$C"); n=0; tot=0
+for d in /proc/[0-9]*; do
+  tr '\0' ' ' < "$d/cmdline" 2>/dev/null | grep -qF -- "$C" || continue
+  tot=$((tot+1))
+  tr '\0' '\n' < "$d/environ" 2>/dev/null | grep -qx "GIT_CONFIG_GLOBAL=$GITCFG" && n=$((n+1))
+done
+result "GIT_CONFIG_GLOBAL in copy C's processes" "$n of $tot (main pid ${P:-none})"
+for d in /proc/[0-9]*; do
+  tr '\0' '\n' < "$d/environ" 2>/dev/null | grep -qx "GIT_CONFIG_GLOBAL=$GITCFG" || continue
+  echo "has it: $(tr '\0' ' ' < "$d/cmdline" | cut -c1-160)"
+done
 if [ "$KIND" = flatpak ]; then
   result "gitconfig readable inside the sandbox" "$(flatpak run --command=cat "$FLATPAK" "$GITCFG" >/dev/null 2>&1 && echo yes || echo no)"
 fi

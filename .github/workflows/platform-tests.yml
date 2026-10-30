@@ -20,8 +20,8 @@ jobs:
         os: [windows-latest, macos-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
       - run: dotnet build src/DeskPicker.csproj -c Release -nologo
@@ -29,14 +29,14 @@ jobs:
   probe-macos:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install GitHub Desktop
         run: |
           brew install --cask github
           xattr -dr com.apple.quarantine "/Applications/GitHub Desktop.app" || true
       - name: Probe
         run: bash ci/probe-macos.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         if: always()
         with:
           name: macos-screenshots
@@ -45,7 +45,7 @@ jobs:
   probe-linux:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install shiftkey/desktop (.deb)
         env:
           GH_TOKEN: ${{ github.token }}
@@ -61,7 +61,7 @@ jobs:
   probe-flatpak:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install the io.github.shiftey.Desktop Flatpak
         run: |
           sudo apt-get update -q
