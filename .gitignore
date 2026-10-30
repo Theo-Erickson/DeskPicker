@@ -1,0 +1,8 @@
+bin/
+obj/
+dist/
+/DeskPicker.exe
+/profiles.json
+/deskpicker-error.log
+.vs/
+*.user

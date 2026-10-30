@@ -1,0 +1,154 @@
+<!-- Control looks. Colors come from the theme brushes by name (Theme.cs). Ui.Theme("Btn")
+     picks one; TextBox and ToolTip get theirs automatically. -->
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="DeskPicker.DeskStyles">
+  <Styles.Resources>
+
+    <!-- Standard small button -->
+    <ControlTheme x:Key="Btn" TargetType="Button">
+      <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+      <Setter Property="Background" Value="{DynamicResource Panel}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Padding" Value="12,0"/>
+      <Setter Property="Height" Value="32"/>
+      <Setter Property="CornerRadius" Value="7"/>
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Name="b" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{TemplateBinding CornerRadius}" Padding="{TemplateBinding Padding}">
+            <ContentPresenter Name="PART_ContentPresenter" Content="{TemplateBinding Content}"
+                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+          </Border>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:pointerover /template/ Border#b"><Setter Property="Opacity" Value="0.86"/></Style>
+      <Style Selector="^:pressed /template/ Border#b"><Setter Property="Opacity" Value="0.72"/></Style>
+      <Style Selector="^:focus-visible /template/ Border#b"><Setter Property="BorderBrush" Value="{DynamicResource Accent}"/></Style>
+      <Style Selector="^:disabled /template/ Border#b"><Setter Property="Opacity" Value="0.45"/></Style>
+    </ControlTheme>
+
+    <ControlTheme x:Key="BtnPrimary" TargetType="Button" BasedOn="{StaticResource Btn}">
+      <Setter Property="Background" Value="{DynamicResource Accent}"/>
+      <Setter Property="Foreground" Value="{DynamicResource AccentText}"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+    </ControlTheme>
+
+    <ControlTheme x:Key="BtnLink" TargetType="Button" BasedOn="{StaticResource Btn}">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Foreground" Value="{DynamicResource Link}"/>
+      <Setter Property="Padding" Value="4,0"/>
+    </ControlTheme>
+
+    <!-- Round-ended buttons for the main page -->
+    <ControlTheme x:Key="BtnPill" TargetType="Button" BasedOn="{StaticResource BtnPrimary}">
+      <Setter Property="CornerRadius" Value="20"/>
+      <Setter Property="Height" Value="40"/>
+      <Setter Property="MinWidth" Value="110"/>
+      <Setter Property="Padding" Value="20,0"/>
+      <Setter Property="FontSize" Value="14"/>
+    </ControlTheme>
+
+    <ControlTheme x:Key="BtnPillOutline" TargetType="Button" BasedOn="{StaticResource Btn}">
+      <Setter Property="CornerRadius" Value="20"/>
+      <Setter Property="Height" Value="40"/>
+      <Setter Property="MinWidth" Value="110"/>
+      <Setter Property="Padding" Value="18,0"/>
+      <Setter Property="FontSize" Value="14"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource Line}"/>
+    </ControlTheme>
+
+    <ControlTheme x:Key="BtnRound" TargetType="Button" BasedOn="{StaticResource Btn}">
+      <Setter Property="CornerRadius" Value="20"/>
+      <Setter Property="Width" Value="40"/>
+      <Setter Property="Height" Value="40"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderBrush" Value="Transparent"/>
+    </ControlTheme>
+
+    <!-- Clickable card (the New profile card) -->
+    <ControlTheme x:Key="Card" TargetType="Button">
+      <Setter Property="Background" Value="{DynamicResource Panel}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+      <Setter Property="Padding" Value="14"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+      <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Name="b" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="14" Padding="{TemplateBinding Padding}">
+            <ContentPresenter Name="PART_ContentPresenter" Content="{TemplateBinding Content}"
+                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+          </Border>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:pointerover /template/ Border#b"><Setter Property="Background" Value="{DynamicResource PanelHover}"/></Style>
+      <Style Selector="^:focus-visible /template/ Border#b"><Setter Property="BorderBrush" Value="{DynamicResource Accent}"/></Style>
+    </ControlTheme>
+
+    <!-- Row in a menu -->
+    <ControlTheme x:Key="Row" TargetType="Button">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Foreground" Value="{DynamicResource Text}"/>
+      <Setter Property="Padding" Value="10,0"/>
+      <Setter Property="MinHeight" Value="34"/>
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+      <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Name="b" Background="{TemplateBinding Background}" CornerRadius="7" Padding="{TemplateBinding Padding}">
+            <ContentPresenter Name="PART_ContentPresenter" Content="{TemplateBinding Content}"
+                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"/>
+          </Border>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:pointerover /template/ Border#b"><Setter Property="Background" Value="{DynamicResource PanelHover}"/></Style>
+      <Style Selector="^:focus-visible /template/ Border#b"><Setter Property="Background" Value="{DynamicResource SelRow}"/></Style>
+    </ControlTheme>
+
+  </Styles.Resources>
+
+  <!-- TextBox keeps the Fluent look; its colors are the theme brushes (Theme.cs maps them). -->
+  <Style Selector="TextBox">
+    <Setter Property="CornerRadius" Value="7"/>
+    <Setter Property="Padding" Value="9,6"/>
+    <Setter Property="FontSize" Value="13.5"/>
+    <Setter Property="MinHeight" Value="0"/>
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+    <Setter Property="SelectionBrush" Value="{DynamicResource Accent}"/>
+    <Setter Property="SelectionForegroundBrush" Value="{DynamicResource AccentText}"/>
+    <Setter Property="CaretBrush" Value="{DynamicResource Text}"/>
+  </Style>
+
+  <Style Selector="ScrollBar /template/ Thumb">
+    <Setter Property="Background" Value="{DynamicResource Scroll}"/>
+  </Style>
+
+  <!-- Popups (menus) draw their own card, so the presenter is bare. -->
+  <Style Selector="FlyoutPresenter.bare">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="CornerRadius" Value="0"/>
+    <Setter Property="MaxWidth" Value="100000"/>
+    <Setter Property="MaxHeight" Value="100000"/>
+    <Setter Property="MinWidth" Value="0"/>
+    <Setter Property="MinHeight" Value="0"/>
+  </Style>
+</Styles>
