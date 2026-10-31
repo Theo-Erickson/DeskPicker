@@ -166,28 +166,67 @@ namespace DeskPicker
         // (--protocol-launcher on Windows, the bare link on Linux).
         static Dictionary<uint, string> MainProcesses()
         {
-            Dictionary<uint, string> all;
-            if (OperatingSystem.IsWindows()) all = WindowsCommandLines();
-            else if (OperatingSystem.IsMacOS()) all = MacCommandLines();
-            else all = LinuxCommandLines();
-            return all.Where(x => !x.Value.Contains("--type=") && !x.Value.Contains("--protocol-launcher") && !x.Value.Contains("x-github-desktop-auth://"))
+            if (OperatingSystem.IsWindows())
+            {
+                // A launcher becomes the main process itself when no default copy was open to
+                // take its link: then it has Chromium helpers of its own.
+                var all = WindowsProcesses();
+                var parents = new HashSet<uint>(all.Values.Where(x => x.Cmd.Contains("--type=")).Select(x => x.Parent));
+                return all.Where(x => !x.Value.Cmd.Contains("--type=") && (!x.Value.Cmd.Contains("--protocol-launcher") || parents.Contains(x.Key)))
+                    .ToDictionary(x => x.Key, x => x.Value.Cmd);
+            }
+            var others = OperatingSystem.IsMacOS() ? MacCommandLines() : LinuxCommandLines();
+            return others.Where(x => !x.Value.Contains("--type=") && !x.Value.Contains("x-github-desktop-auth://"))
                 .ToDictionary(x => x.Key, x => x.Value);
+        }
+
+        public class WinProcess
+        {
+            public string Cmd;
+            public uint Parent;
+            public DateTime StartedUtc;
+        }
+
+        // Every GitHubDesktop.exe: its command line, parent and start time.
+        [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+        public static Dictionary<uint, WinProcess> WindowsProcesses()
+        {
+            var d = new Dictionary<uint, WinProcess>();
+            using (var q = new ManagementObjectSearcher("SELECT ProcessId, ParentProcessId, CreationDate, CommandLine FROM Win32_Process WHERE Name='GitHubDesktop.exe'"))
+            {
+                foreach (ManagementObject pr in q.Get())
+                {
+                    string cmd = pr["CommandLine"] as string;
+                    if (string.IsNullOrEmpty(cmd)) continue;
+                    DateTime started = DateTime.MinValue;
+                    try { started = ManagementDateTimeConverter.ToDateTime((string)pr["CreationDate"]).ToUniversalTime(); } catch { }
+                    d[(uint)pr["ProcessId"]] = new WinProcess { Cmd = cmd, Parent = (uint)pr["ParentProcessId"], StartedUtc = started };
+                }
+            }
+            return d;
         }
 
         // Process id -> command line for every GitHubDesktop.exe.
         [System.Runtime.Versioning.SupportedOSPlatform("windows")]
         public static Dictionary<uint, string> WindowsCommandLines()
         {
-            var d = new Dictionary<uint, string>();
-            using (var q = new ManagementObjectSearcher("SELECT ProcessId, CommandLine FROM Win32_Process WHERE Name='GitHubDesktop.exe'"))
+            return WindowsProcesses().ToDictionary(x => x.Key, x => x.Value.Cmd);
+        }
+
+        // When a Linux process started (UTC), from /proc/<pid>/stat; MinValue if unknown.
+        public static DateTime LinuxStartedUtc(uint pid)
+        {
+            try
             {
-                foreach (ManagementObject pr in q.Get())
-                {
-                    string cmd = pr["CommandLine"] as string;
-                    if (!string.IsNullOrEmpty(cmd)) d[(uint)pr["ProcessId"]] = cmd;
-                }
+                // Field 22 is the start time in clock ticks since boot; the name in field 2
+                // can contain spaces, so count from its closing parenthesis.
+                string stat = File.ReadAllText("/proc/" + pid + "/stat");
+                var fields = stat.Substring(stat.LastIndexOf(')') + 2).Split(' ');
+                long ticks = long.Parse(fields[19]);
+                long boot = long.Parse(File.ReadAllLines("/proc/stat").First(l => l.StartsWith("btime ")).Substring(6));
+                return DateTimeOffset.FromUnixTimeSeconds(boot).UtcDateTime.AddSeconds(ticks / 100.0);   // USER_HZ is 100 on Linux
             }
-            return d;
+            catch { return DateTime.MinValue; }
         }
 
         static Dictionary<uint, string> MacCommandLines()

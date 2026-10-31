@@ -124,7 +124,7 @@ namespace DeskPicker
                 var cts = new CancellationTokenSource(Patience);
                 watching = cts;
                 if (OperatingSystem.IsMacOS()) Task.Run(() => { if (OperatingSystem.IsMacOS()) HoldHandler(cts.Token); });
-                else Task.Run(() => Relay(pending.Profile, cts.Token));
+                else Task.Run(() => Relay(pending.Profile, pending.Since, cts.Token));
             }
         }
 
@@ -212,7 +212,14 @@ namespace DeskPicker
             return new Dictionary<uint, string>();
         }
 
-        static void Relay(Profile target, CancellationToken stop)
+        // When a link-carrying process started (UTC); MinValue if unknown.
+        static DateTime StartedUtc(uint pid, Dictionary<uint, Desktop.WinProcess> windows)
+        {
+            if (windows != null) { Desktop.WinProcess w; return windows.TryGetValue(pid, out w) ? w.StartedUtc : DateTime.MinValue; }
+            return OperatingSystem.IsLinux() ? Desktop.LinuxStartedUtc(pid) : DateTime.MinValue;
+        }
+
+        static void Relay(Profile target, DateTime since, CancellationToken stop)
         {
             HashSet<uint> seen = null;
             while (!stop.IsCancellationRequested)
@@ -220,7 +227,16 @@ namespace DeskPicker
                 Dictionary<uint, string> now;
                 try { now = LinkCarriers(); }
                 catch { now = new Dictionary<uint, string>(); }
-                if (seen == null) seen = new HashSet<uint>(now.Keys);   // what was already there doesn't count
+                if (seen == null)
+                {
+                    // Carriers already there when we started watching count only if they
+                    // started after the sign-in did: when you've signed in to the app before,
+                    // the browser comes straight back, often before the first look. Older ones
+                    // carry an earlier link (say, a launcher that became the main copy).
+                    Dictionary<uint, Desktop.WinProcess> windows = null;
+                    if (OperatingSystem.IsWindows()) try { windows = Desktop.WindowsProcesses(); } catch { }
+                    seen = new HashSet<uint>(now.Keys.Where(pid => StartedUtc(pid, windows) < since.AddSeconds(-2)));
+                }
                 foreach (var kv in now)
                 {
                     if (!seen.Add(kv.Key) || kv.Value.Contains("--user-data-dir")) continue;

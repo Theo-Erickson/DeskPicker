@@ -72,6 +72,30 @@ namespace DeskPicker
             return dir.StartsWith(temp + Path.DirectorySeparatorChar, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
         }
 
+        // True while a Desktop that's closing still has the profile's saved settings open.
+        // Starting another one then gives it empty settings: it forgets its account and shows
+        // the sign-in screen until it's restarted. (Windows only; elsewhere this is false.)
+        public static bool StorageBusy(Profile p)
+        {
+            if (!OperatingSystem.IsWindows()) return false;
+            string lockFile = Path.Combine(DataDirOf(p), "Local Storage", "leveldb", "LOCK");
+            if (!File.Exists(lockFile)) return false;
+            try { using (new FileStream(lockFile, FileMode.Open, FileAccess.ReadWrite, FileShare.None)) { } return false; }
+            catch (IOException) { return true; }
+            catch { return false; }
+        }
+
+        // Waits up to 'seconds' for StorageBusy to clear; false if it didn't.
+        public static bool WaitForStorage(Profile p, int seconds)
+        {
+            for (int i = 0; i < seconds * 4; i++)
+            {
+                if (!StorageBusy(p)) return true;
+                System.Threading.Thread.Sleep(250);
+            }
+            return !StorageBusy(p);
+        }
+
         // Moves a (closed) profile's data folder to 'to'. Its sign-in stays: the token is in
         // the system keychain under the account's login, not in the folder.
         public static void MoveData(Profile p, string to)

@@ -95,6 +95,8 @@ namespace DeskPicker
             {
                 var p = Profiles.Load().FirstOrDefault(x => string.Equals(x.name, name, StringComparison.OrdinalIgnoreCase));
                 if (p == null) { Log("No profile called \"" + name + "\"."); return 1; }
+                // A window that's still closing would make this one start signed out.
+                if (!Profiles.IsRunning(Desktop.RunningDirs(), p) && !Profiles.WaitForStorage(p, 15)) { Log(p.name + " was still closing; not opened."); return 1; }
                 Desktop.Launch(p, null, GitIdentity.Prepare(p));
                 return 0;
             }
