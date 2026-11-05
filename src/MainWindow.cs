@@ -27,6 +27,8 @@ namespace DeskPicker
         readonly StackPanel bottom;
         readonly DispatcherTimer timer;
 
+        const double Gap = 16, CardMin = 280;
+
         public MainWindow()
         {
             Title = Program.Title;
@@ -44,11 +46,8 @@ namespace DeskPicker
             var root = new DockPanel { Margin = new Thickness(48, 32, 48, 24) };
 
             // headline
+            // (adding a profile is the last card in the grid)
             var head = new DockPanel { Margin = new Thickness(0, 0, 0, 24) };
-            var add = Ui.IconBtn("plus", "New profile", AddProfile, "BtnPillOutline", "Text");
-            add.VerticalAlignment = VerticalAlignment.Bottom;
-            DockPanel.SetDock(add, Dock.Right);
-            head.Children.Add(add);
             caption = Ui.Text("", 12.5, "Muted");
             caption.LetterSpacing = 2;
             var title = new TextBlock { FontSize = 38, FontWeight = FontWeights.Light, LetterSpacing = -0.6 };
@@ -64,8 +63,17 @@ namespace DeskPicker
             DockPanel.SetDock(bottom, Dock.Bottom);
             root.Children.Add(bottom);
 
-            field = new WrapPanel { ItemSpacing = 16, LineSpacing = 16 };
-            root.Children.Add(new ScrollViewer { Content = field, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
+            // Cards share the width evenly: as many columns as fit at CardMin, each stretched
+            // to fill the row, and every card in a row as tall as the tallest.
+            field = new WrapPanel { ItemSpacing = Gap, LineSpacing = Gap };
+            var scroll = new ScrollViewer { Content = field, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+            scroll.SizeChanged += (s, e) =>
+            {
+                double w = e.NewSize.Width;
+                int cols = Math.Max(1, (int)((w + Gap) / (CardMin + Gap)));
+                field.ItemWidth = Math.Floor((w - Gap * (cols - 1)) / cols);
+            };
+            root.Children.Add(scroll);
             Content = root;
 
             SignIn.Relayed += p => Dispatcher.UIThread.Post(delegate
@@ -158,8 +166,10 @@ namespace DeskPicker
                 ? ((p.gitName ?? "(global name)") + " <" + (p.gitEmail ?? "global email") + ">")
                 : "Your global git identity";
 
-            var folder = Ui.Line(Profiles.IsDefault(p) ? "Desktop's default folder" : p.dataDir, 11.5, "Faint");
+            // The end of the path is the part that tells profiles apart, so trim the start.
+            var folder = Ui.Line(Profiles.IsDefault(p) ? "Desktop's default folder" : p.dataDir, 11.5, "Muted");
             folder.FontFamily = Ui.Mono;
+            folder.TextTrimming = TextTrimming.PrefixCharacterEllipsis;
             folder.Tip(Profiles.DataDirOf(p));
 
             var openBtn = Ui.Btn(on ? "Show window" : "Open", delegate { Open(p); }, on ? "BtnPillOutline" : "BtnPill");
@@ -171,11 +181,10 @@ namespace DeskPicker
             actions.Margin = new Thickness(0, 6, 0, 0);
 
             var body = Ui.Stack(9, top,
-                Ui.Row(8, Ui.Icon("user", 15), Ui.Line(account, 13.5, accountBrush)),
-                Ui.Row(8, Ui.Icon("commit", 15), Ui.Line(commits, 13.5, "Sub")),
+                Ui.IconLine("user", Ui.Line(account, 13.5, accountBrush)),
+                Ui.IconLine("commit", Ui.Line(commits, 13.5, "Sub")),
                 folder, actions);
             var card = Ui.Panel(body, 18, "Panel", on ? "OkBorder" : "Border", 14);
-            card.Width = 300;
             card.DoubleTapped += delegate { Open(p); };
             return card;
         }
@@ -189,7 +198,7 @@ namespace DeskPicker
             inner.HorizontalAlignment = HorizontalAlignment.Center;
             inner.VerticalAlignment = VerticalAlignment.Center;
             t.HorizontalAlignment = sub.HorizontalAlignment = HorizontalAlignment.Center;
-            var b = new Button { Theme = Ui.Theme("Card"), Content = inner, Width = 300, MinHeight = 190, Background = Brushes.Transparent };
+            var b = new Button { Theme = Ui.Theme("Card"), Content = inner, MinHeight = 190, Background = Brushes.Transparent };
             Avalonia.Automation.AutomationProperties.SetName(b, "Add a new profile");
             b.Click += delegate { AddProfile(); };
             return b;
