@@ -274,6 +274,11 @@ namespace DeskPicker
         void Open(Profile p)
         {
             if (!Ready()) return;
+            if (!Profiles.IsRunning(running, p) && !Profiles.WaitForStorage(p, 2))
+            {
+                Dialogs.Info(this, p.name + " is still closing", "Its last GitHub Desktop window hasn't finished closing yet. Opening it now would start it signed out, so wait a few seconds and try again.");
+                return;
+            }
             // Launching a profile that's already running just brings its window forward.
             Desktop.Launch(p, null, GitIdentity.Prepare(p));
             RefreshSoon();

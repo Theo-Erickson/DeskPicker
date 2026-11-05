@@ -56,6 +56,12 @@ case "$RID" in
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>NSHighResolutionCapable</key><true/>
+  <!-- So DeskPicker can catch GitHub's sign-in link while a profile waits for it. -->
+  <key>CFBundleURLTypes</key>
+  <array><dict>
+    <key>CFBundleURLName</key><string>GitHub Desktop sign-in</string>
+    <key>CFBundleURLSchemes</key><array><string>x-github-desktop-auth</string></array>
+  </dict></array>
 </dict>
 </plist>
 EOF

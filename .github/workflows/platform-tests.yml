@@ -1,0 +1,102 @@
+# Builds DeskPicker on every platform, and checks on real GitHub Desktop installs that what
+# DeskPicker relies on works on macOS and Linux: side-by-side copies, where a sign-in link
+# lands, handing it to the waiting copy, and GIT_CONFIG_GLOBAL. The probes use a made-up
+# link (no account, no token); results land in the run's summary.
+name: platform-tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - run: dotnet build src/DeskPicker.csproj -c Release -nologo
+
+  probe-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install GitHub Desktop
+        run: |
+          # The download sometimes gets cut off; try a few times.
+          for i in 1 2 3; do brew install --cask github && break; sleep 20; done
+          test -d "/Applications/GitHub Desktop.app"
+          xattr -dr com.apple.quarantine "/Applications/GitHub Desktop.app" || true
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - name: Build DeskPicker.app
+        run: |
+          ./build.sh
+          mkdir -p ~/Applications
+          cp -R dist/osx-*/DeskPicker.app ~/Applications/
+      - name: Probe
+        run: bash ci/probe-macos.sh
+        env:
+          DESKPICKER_APP: /Users/runner/Applications/DeskPicker.app
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: macos-screenshots
+          path: /tmp/shots
+
+  probe-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install shiftkey/desktop (.deb)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download -R shiftkey/desktop -p '*linux-amd64*.deb' -D /tmp/deb
+          sudo apt-get update -q
+          sudo apt-get install -y -q xvfb dbus-x11 xdg-utils gnome-keyring strace /tmp/deb/*.deb
+          # Electron's sandbox needs unprivileged user namespaces, which Ubuntu 24.04 restricts.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - name: Build DeskPicker
+        run: dotnet build src/DeskPicker.csproj -c Release -nologo -o /tmp/dp
+      - name: Probe
+        run: xvfb-run -a dbus-run-session -- bash ci/probe-linux.sh native
+        env:
+          DESKPICKER: /tmp/dp/DeskPicker
+
+  probe-flatpak:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install the io.github.shiftey.Desktop Flatpak
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q flatpak xvfb dbus-x11 xdg-utils gnome-keyring
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y --noninteractive flathub io.github.shiftey.Desktop
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - name: Build DeskPicker
+        run: dotnet build src/DeskPicker.csproj -c Release -nologo -o /tmp/dp
+      - name: Probe
+        env:
+          DESKPICKER: /tmp/dp/DeskPicker
+        run: |
+          export XDG_DATA_DIRS="$HOME/.local/share/flatpak/exports/share:/usr/local/share:/usr/share"
+          export PATH="$HOME/.local/share/flatpak/exports/bin:$PATH"
+          xvfb-run -a dbus-run-session -- bash ci/probe-linux.sh flatpak
