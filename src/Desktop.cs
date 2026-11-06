@@ -131,15 +131,24 @@ namespace DeskPicker
             var set = new HashSet<string>(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
             try
             {
-                foreach (var cmd in MainCommandLines())
-                {
-                    var m = Regex.Match(cmd, "--user-data-dir=(?:\"([^\"]+)\"|(\\S+))");
-                    string dir = !m.Success ? DefaultDir : (m.Groups[1].Success ? m.Groups[1].Value : m.Groups[2].Value);
-                    set.Add(Trim(dir));
-                }
+                foreach (var cmd in MainCommandLines()) set.Add(Trim(DataDirIn(cmd) ?? DefaultDir));
             }
             catch { }
             return set;
+        }
+
+        // The --user-data-dir in a command line, or null. It comes three ways:
+        //   "--user-data-dir=C:\a b"   the whole argument quoted (how Launch passes a path with spaces)
+        //   --user-data-dir="C:\a b"   just the value quoted (Electron's helpers)
+        //   --user-data-dir=/a b       unquoted (ps on macOS and Linux): up to the next --switch
+        static readonly Regex DataDirArg = new Regex("(\")?--user-data-dir=(?:\"([^\"]+)\"|(?(1)([^\"]+)|(.+?)(?=\\s--|$)))");
+
+        public static string DataDirIn(string cmd)
+        {
+            var m = DataDirArg.Match(cmd);
+            if (!m.Success) return null;
+            for (int g = 2; g <= 4; g++) if (m.Groups[g].Success) return m.Groups[g].Value.Trim();
+            return null;
         }
 
         public static string Trim(string dir) { return dir.TrimEnd('\\', '/'); }
