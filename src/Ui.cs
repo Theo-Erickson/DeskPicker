@@ -88,10 +88,10 @@ namespace DeskPicker
 
         // An icon and a line of text that gets the rest of the width, so it can end in "..."
         // (a horizontal StackPanel would give it unlimited room and let it spill out).
-        public static Grid IconLine(string icon, TextBlock line, double gap = 8)
+        public static Grid IconLine(string icon, TextBlock line, double gap = 8, string iconBrush = "Muted")
         {
             var g = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
-            var ic = Icon(icon, 15);
+            var ic = Icon(icon, 15, iconBrush);
             ic.Margin = new Thickness(0, 0, gap, 0);
             Grid.SetColumn(line, 1);
             line.VerticalAlignment = VerticalAlignment.Center;
@@ -124,6 +124,69 @@ namespace DeskPicker
             var b = new Border { Child = sp, CornerRadius = new CornerRadius(10), Padding = new Thickness(8, 2, 9, 3), VerticalAlignment = VerticalAlignment.Center };
             b.SetResourceReference(Border.BackgroundProperty, bg);
             return b;
+        }
+
+        // A manila folder: a tab ('tab', beside 'status' on the right), the folder's back, a sheet
+        // of paper peeking out, and the front flap holding 'body'. 'pulled' slides the paper
+        // further out, marked green (the profile is open). A 'ghost' folder is just an outline
+        // (the New profile card): its fill comes from the styles so it can light up on hover.
+        public static Grid Folder(Control tab, Control body, Control status = null, bool pulled = false, bool ghost = false)
+        {
+            var g = new Grid { RowDefinitions = new RowDefinitions("Auto,*") };
+            g.Classes.Add("folder");
+
+            var tabB = new Border { Child = tab, Padding = new Thickness(16, 7, 16, 8), CornerRadius = new CornerRadius(10, 10, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, -1) };
+            var back = new Border { CornerRadius = new CornerRadius(0, 12, 12, 12) };
+            Grid.SetRow(back, 1);
+
+            var head = new DockPanel();
+            if (status != null)
+            {
+                // the status sits on the desk beside the tab, and leaves the tab the rest of the width
+                status.Margin = new Thickness(12, 0, 0, 7);
+                status.VerticalAlignment = VerticalAlignment.Bottom;
+                DockPanel.SetDock(status, Dock.Right);
+                head.Children.Add(status);
+            }
+            head.Children.Add(tabB);
+
+            if (ghost)
+            {
+                tabB.Classes.Add("ghost"); back.Classes.Add("ghost");
+                tabB.BorderThickness = new Thickness(1, 1, 1, 0);
+                back.BorderThickness = new Thickness(1);
+                back.Child = body;
+                back.Padding = new Thickness(18);
+                g.Children.Add(back);
+                g.Children.Add(head);      // over the back, so the tab covers the back's top line
+                return g;
+            }
+
+            tabB.SetResourceReference(Border.BackgroundProperty, "ManilaBack");
+            back.SetResourceReference(Border.BackgroundProperty, "ManilaBack");
+
+            var paper = new Border { Height = 48, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(14, pulled ? 0 : 7, 22, 0), CornerRadius = new CornerRadius(3, 3, 0, 0) };
+            paper.SetResourceReference(Border.BackgroundProperty, "Paper");
+            if (pulled)
+            {
+                paper.BorderThickness = new Thickness(0, 3, 0, 0);
+                paper.SetResourceReference(Border.BorderBrushProperty, "Accent");
+            }
+
+            var front = new Border { Child = body, Padding = new Thickness(18, 16, 18, 18), Margin = new Thickness(0, 17, 0, 0), CornerRadius = new CornerRadius(5, 5, 12, 12), BorderThickness = new Thickness(0, 1, 0, 0) };
+            front.SetResourceReference(Border.BackgroundProperty, "Manila");
+            front.SetResourceReference(Border.BorderBrushProperty, "ManilaEdge");
+            front.BoxShadow = new BoxShadows(new BoxShadow { OffsetY = -1, Blur = 6, Color = Color.FromArgb(55, 60, 40, 10) });
+
+            var pocket = new Panel();
+            Grid.SetRow(pocket, 1);
+            pocket.Children.Add(paper);
+            pocket.Children.Add(front);
+
+            g.Children.Add(head);
+            g.Children.Add(back);
+            g.Children.Add(pocket);
+            return g;
         }
 
         // A notice strip: an icon, a message, and optional actions on the right.
