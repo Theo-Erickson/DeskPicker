@@ -1,0 +1,8 @@
+[
+  {"name": "Personal", "folder": "GitHub Desktop-Personal", "githubLogin": "mona-lisa",
+   "gitName": "Mona Lisa", "gitEmail": "mona@example.com"},
+  {"name": "Work", "folder": "GitHub Desktop-Work", "githubLogin": "mona-at-work",
+   "gitName": "Mona Lisa", "gitEmail": "mona@acme.example"},
+  {"name": "Open source", "folder": "GitHub Desktop-OSS", "githubLogin": "octo-mona",
+   "gitName": "Mona", "gitEmail": "octo-mona@users.noreply.github.com"}
+]
