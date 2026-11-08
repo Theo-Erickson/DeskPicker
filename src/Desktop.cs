@@ -133,7 +133,7 @@ namespace DeskPicker
         public static HashSet<string> RunningDirs()
         {
             var set = new HashSet<string>(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
-            try { foreach (var cmd in MainProcesses().Values) set.Add(DataDirIn(cmd)); }
+            try { foreach (var cmd in MainProcesses().Values) set.Add(DirOf(cmd)); }
             catch { }
             return set;
         }
@@ -145,18 +145,30 @@ namespace DeskPicker
             {
                 string want = Trim(dataDir);
                 foreach (var kv in MainProcesses())
-                    if (string.Equals(DataDirIn(kv.Value), want, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)) return kv.Key;
+                    if (string.Equals(DirOf(kv.Value), want, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)) return kv.Key;
             }
             catch { }
             return 0;
         }
 
-        // The data folder a Desktop command line uses. It can be quoted (Windows), or not and
-        // contain spaces (macOS's ps, Linux's /proc): then it runs to the next switch or the end.
-        static string DataDirIn(string cmd)
+        // The --user-data-dir in a command line, or null. It comes three ways:
+        //   "--user-data-dir=C:\a b"   the whole argument quoted (how Launch passes a path with spaces)
+        //   --user-data-dir="C:\a b"   just the value quoted (Electron's helpers)
+        //   --user-data-dir=/a b       unquoted (ps on macOS and Linux): up to the next --switch
+        static readonly Regex DataDirArg = new Regex("(\")?--user-data-dir=(?:\"([^\"]+)\"|(?(1)([^\"]+)|(.+?)(?=\\s--|$)))");
+
+        public static string DataDirIn(string cmd)
         {
-            var m = Regex.Match(cmd, "--user-data-dir=(?:\"([^\"]+)\"|(.+?)(?=\"|\\s+--|\\s*$))");
-            return Trim(!m.Success ? DefaultDir : (m.Groups[1].Success ? m.Groups[1].Value : m.Groups[2].Value));
+            var m = DataDirArg.Match(cmd);
+            if (!m.Success) return null;
+            for (int g = 2; g <= 4; g++) if (m.Groups[g].Success) return m.Groups[g].Value.Trim();
+            return null;
+        }
+
+        // The data folder a Desktop command line uses: its --user-data-dir, or Desktop's own default.
+        static string DirOf(string cmd)
+        {
+            return Trim(DataDirIn(cmd) ?? DefaultDir);
         }
 
         public static string Trim(string dir) { return dir.TrimEnd('\\', '/'); }

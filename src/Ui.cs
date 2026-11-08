@@ -86,6 +86,21 @@ namespace DeskPicker
             return sp;
         }
 
+        // An icon and a line of text that gets the rest of the width, so it can end in "..."
+        // (a horizontal StackPanel would give it unlimited room and let it spill out).
+        public static Grid IconLine(string icon, TextBlock line, double gap = 8)
+        {
+            var g = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
+            var ic = Icon(icon, 15);
+            ic.Margin = new Thickness(0, 0, gap, 0);
+            Grid.SetColumn(line, 1);
+            line.VerticalAlignment = VerticalAlignment.Center;
+            g.Children.Add(ic);
+            g.Children.Add(line);
+            line.Tip(line.Text);
+            return g;
+        }
+
         public static StackPanel Stack(double gap, params Control[] items)
         {
             var sp = new StackPanel { Spacing = gap };
