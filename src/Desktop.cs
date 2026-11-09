@@ -4,6 +4,8 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Management;
+using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace DeskPicker
@@ -125,13 +127,24 @@ namespace DeskPicker
 
         // ---------- running-instance detection ----------
 
-        // Data folders whose Desktop main process is alive.
-        public static HashSet<string> RunningDirs()
+        // Data folders whose Desktop main process is alive. On Windows 'pids', if given, is
+        // filled with each main process's id and data folder (for Retitle).
+        public static HashSet<string> RunningDirs(Dictionary<uint, string> pids = null)
         {
             var set = new HashSet<string>(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
             try
             {
-                foreach (var cmd in MainCommandLines()) set.Add(Trim(DataDirIn(cmd) ?? DefaultDir));
+                if (OperatingSystem.IsWindows())
+                {
+                    foreach (var kv in WindowsCommandLines())
+                    {
+                        if (!IsMain(kv.Value)) continue;
+                        string dir = Trim(DataDirIn(kv.Value) ?? DefaultDir);
+                        set.Add(dir);
+                        if (pids != null) pids[kv.Key] = dir;
+                    }
+                }
+                else foreach (var cmd in MainCommandLines()) set.Add(Trim(DataDirIn(cmd) ?? DefaultDir));
             }
             catch { }
             return set;
@@ -161,8 +174,10 @@ namespace DeskPicker
             if (OperatingSystem.IsWindows()) all = WindowsCommandLines().Select(x => x.Value);
             else if (OperatingSystem.IsMacOS()) all = MacCommandLines();
             else all = LinuxCommandLines();
-            return all.Where(c => !c.Contains("--type=") && !c.Contains("--protocol-launcher"));
+            return all.Where(IsMain);
         }
+
+        static bool IsMain(string cmd) { return !cmd.Contains("--type=") && !cmd.Contains("--protocol-launcher"); }
 
         // Process id -> command line for every GitHubDesktop.exe.
         [System.Runtime.Versioning.SupportedOSPlatform("windows")]
@@ -207,5 +222,62 @@ namespace DeskPicker
             }
             return list;
         }
+
+        // ---------- window titles ----------
+
+        // Every copy of Desktop calls its window "GitHub Desktop". This renames each running
+        // profile's window to Profiles.WindowTitle, so they can be told apart in the taskbar
+        // and Alt+Tab. Windows only for now. 'pids' is from RunningDirs (null = look them
+        // up). Returns how many windows were found, and how many of those needed renaming.
+        public static Tuple<int, int> Retitle(IEnumerable<Profile> profiles, Dictionary<uint, string> pids = null)
+        {
+            if (!OperatingSystem.IsWindows()) return Tuple.Create(0, 0);
+            int found = 0, changed = 0;
+            try
+            {
+                var want = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var p in profiles) want[Trim(Profiles.DataDirOf(p))] = Profiles.WindowTitle(p);
+                if (pids == null) { pids = new Dictionary<uint, string>(); RunningDirs(pids); }
+                var titles = new Dictionary<uint, string>();
+                foreach (var kv in pids)
+                {
+                    string t;
+                    if (want.TryGetValue(kv.Value, out t)) titles[kv.Key] = t;
+                }
+                if (titles.Count == 0) return Tuple.Create(0, 0);
+
+                var text = new StringBuilder(512);
+                EnumWindows((h, _) =>
+                {
+                    uint pid;
+                    string t;
+                    GetWindowThreadProcessId(h, out pid);
+                    if (!titles.TryGetValue(pid, out t) || !IsWindowVisible(h)) return true;
+                    text.Clear();
+                    GetWindowText(h, text, text.Capacity);
+                    if (text.Length == 0) return true;   // Electron's untitled helper windows
+                    found++;
+                    if (text.ToString() != t)
+                    {
+                        // Not SetWindowText: that waits forever on a window that's hung.
+                        IntPtr r;
+                        SendMessageTimeout(h, WM_SETTEXT, IntPtr.Zero, t, SMTO_ABORTIFHUNG, 1000, out r);
+                        changed++;
+                    }
+                    return true;
+                }, IntPtr.Zero);
+            }
+            catch { }
+            return Tuple.Create(found, changed);
+        }
+
+        delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lParam);
+        const uint WM_SETTEXT = 0x000C, SMTO_ABORTIFHUNG = 0x0002;
+        [DllImport("user32.dll")] static extern bool EnumWindows(EnumWindowsProc proc, IntPtr lParam);
+        [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+        [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hwnd);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr hwnd, StringBuilder text, int max);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        static extern IntPtr SendMessageTimeout(IntPtr hwnd, uint msg, IntPtr wParam, string lParam, uint flags, uint timeout, out IntPtr result);
     }
 }

@@ -258,7 +258,9 @@ namespace DeskPicker
             var snapshot = profiles.ToList();
             Task.Run(() =>
             {
-                var r = Desktop.RunningDirs();
+                var pids = new Dictionary<uint, string>();
+                var r = Desktop.RunningDirs(pids);
+                Desktop.Retitle(snapshot, pids);
                 var s = Keychain.SignedInLogins();
                 var w = SignIn.Waiting(snapshot, r);
                 return Tuple.Create(r, s, w);
@@ -313,10 +315,10 @@ namespace DeskPicker
 
         void EditProfile(Profile p)
         {
-            var copy = new Profile { name = p.name, dataDir = p.dataDir, githubLogin = p.githubLogin, gitName = p.gitName, gitEmail = p.gitEmail };
+            var copy = new Profile { name = p.name, dataDir = p.dataDir, githubLogin = p.githubLogin, gitName = p.gitName, gitEmail = p.gitEmail, windowTitle = p.windowTitle };
             if (!Dialogs.EditProfile(this, copy, false, profiles.IndexOf(p))) return;
             bool identityChanged = copy.gitName != p.gitName || copy.gitEmail != p.gitEmail || copy.githubLogin != p.githubLogin;
-            p.name = copy.name; p.githubLogin = copy.githubLogin; p.gitName = copy.gitName; p.gitEmail = copy.gitEmail;
+            p.name = copy.name; p.githubLogin = copy.githubLogin; p.gitName = copy.gitName; p.gitEmail = copy.gitEmail; p.windowTitle = copy.windowTitle;
             Save();
             if (identityChanged && Profiles.IsRunning(running, p))
                 Dialogs.Info(this, "Saved", "Close and reopen " + p.name + " for the new commit identity to take effect.");
