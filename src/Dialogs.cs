@@ -79,6 +79,10 @@ namespace DeskPicker
             var login = new TextBox { Text = p.githubLogin ?? "", PlaceholderText = "e.g. octocat" };
             var gitName = new TextBox { Text = p.gitName ?? "", PlaceholderText = "Leave empty to use your global git name" };
             var gitEmail = new TextBox { Text = p.gitEmail ?? "", PlaceholderText = "Leave empty to use your global git email" };
+            var title = new TextBox { Text = p.windowTitle ?? "" };
+            Action titleHint = delegate { title.PlaceholderText = Profiles.DefaultWindowTitle(string.IsNullOrWhiteSpace(name.Text) ? "Name" : name.Text); };
+            titleHint();
+            name.TextChanged += delegate { titleHint(); };
             Func<string> dir = delegate { return adding ? Profiles.NewDataDir((name.Text ?? "").Trim(), index) : Profiles.DataDirOf(p); };
             var where = Ui.Line(dir(), 11.5, "Faint");
             where.FontFamily = Ui.Mono;
@@ -100,6 +104,7 @@ namespace DeskPicker
                 p.githubLogin = Clean(login.Text);
                 p.gitName = Clean(gitName.Text);
                 p.gitEmail = Clean(gitEmail.Text);
+                p.windowTitle = Clean(title.Text);
                 saved = true;
                 w.Close();
             }, "BtnPrimary");
@@ -114,7 +119,8 @@ namespace DeskPicker
                 Ui.Stack(5, Ui.Text("Name", 12, "Muted"), name, where),
                 field("GitHub account", "The login this profile signs in with. Used to show whether it's signed in.", login),
                 field("Commit name", null, gitName),
-                field("Commit email", "Commits made in this profile use these. Your global git config is left alone.", gitEmail));
+                field("Commit email", "Commits made in this profile use these. Your global git config is left alone.", gitEmail),
+                field("Window title", "What this profile's GitHub Desktop window is called in the taskbar and Alt+Tab. Leave empty for the one shown.", title));
             w.Layout(content, Ui.Btn("Cancel", delegate { w.Close(); }), save);
             w.Opened += delegate { name.Focus(); name.SelectAll(); };
             w.ShowModal();

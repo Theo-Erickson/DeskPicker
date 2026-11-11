@@ -98,6 +98,7 @@ namespace DeskPicker
                 // A window that's still closing would make this one start signed out.
                 if (!Profiles.IsRunning(Desktop.RunningDirs(), p) && !Profiles.WaitForStorage(p, 15)) { Log(p.name + " was still closing; not opened."); return 1; }
                 Desktop.Launch(p, null, GitIdentity.Prepare(p));
+                KeepTitle(p);
                 return 0;
             }
             catch (Exception e) { Log(e.ToString()); return 1; }
@@ -125,6 +126,23 @@ namespace DeskPicker
             SignIn.Watch(null);
             Console.WriteLine(ok ? "relayed" : "no link seen");
             return ok ? 0 : 1;
+        }
+
+        // Renames the profile's window once Desktop shows it, and keeps at it until Desktop
+        // has gone a few seconds without putting its own title back (it can while it loads).
+        static void KeepTitle(Profile p)
+        {
+            if (!OperatingSystem.IsWindows()) return;
+            var start = DateTime.Now;
+            DateTime? settled = null;
+            while (DateTime.Now - start < TimeSpan.FromSeconds(60))
+            {
+                Thread.Sleep(300);
+                var r = Desktop.Retitle(new[] { p });
+                if (r.Item1 == 0 || r.Item2 > 0) settled = null;
+                else if (settled == null) settled = DateTime.Now;
+                else if (DateTime.Now - settled > TimeSpan.FromSeconds(8)) return;
+            }
         }
 
         static void Log(string text)

@@ -1,0 +1,163 @@
+{
+  "tool_version": "2.3",
+  "fps": 30,
+  "out": "../../.github/readme",
+  "work": ".work",
+  "recordings": {
+    "showcase": {
+      "source": "command",
+      "run": [
+        "python",
+        "demo.py"
+      ],
+      "driver": [
+        "python",
+        "driver.py"
+      ],
+      "warmup": 5,
+      "seconds": 21.4,
+      "region": [
+        50,
+        86,
+        1520,
+        884
+      ],
+      "draw_mouse": true
+    }
+  },
+  "banner": {
+    "recording": "showcase",
+    "title": [
+      "DESK",
+      "PICKER"
+    ],
+    "tagline": "Accounts, side by side",
+    "labels": [
+      "PROFILES",
+      "NEW PROFILE",
+      "COMMIT AS",
+      "RUN SIDE BY SIDE"
+    ],
+    "first": 60,
+    "segment": 145,
+    "take": [
+      0,
+      140
+    ],
+    "step": 2,
+    "ms": 66,
+    "font": "../../assets/fonts/AtkinsonHyperlegibleNext.ttf",
+    "icon": "../../deskpicker.ico",
+    "colors": {
+      "bg": "#0b0f15",
+      "sky_mid": "#101823",
+      "sky_end": "#0b0f15",
+      "from": "#3fb950",
+      "to": "#7ee2a8",
+      "soft": "#8b949e",
+      "accent": "#4cc36a",
+      "text": "#e6edf3"
+    }
+  },
+  "hero": {
+    "recording": "showcase",
+    "first": 60,
+    "segment": 145,
+    "count": 4,
+    "take": [
+      0,
+      140
+    ],
+    "step": 3,
+    "ms": 100
+  },
+  "clips": {
+    "recording": "showcase",
+    "first": 60,
+    "segment": 145,
+    "take": [
+      0,
+      140
+    ],
+    "step": 2,
+    "ms": 66,
+    "names": [
+      "profiles",
+      "new",
+      "identity",
+      "open"
+    ]
+  },
+  "readme": {
+    "name": "DeskPicker",
+    "tagline": "Accounts, side by side",
+    "note": "Windows is where DeskPicker is tested. The macOS and Linux builds run but are untested; see [Platforms](#platforms).",
+    "badges": [
+      {
+        "label": "version",
+        "message": "0.1.0",
+        "color": "#4cc36a"
+      },
+      {
+        "label": "platform",
+        "message": "Windows",
+        "color": "#2a3441"
+      },
+      {
+        "label": ".NET",
+        "message": "10",
+        "color": "#512bd4"
+      },
+      {
+        "label": "passwords seen",
+        "message": "0",
+        "color": "#3fb950"
+      }
+    ],
+    "captions": {
+      "profiles": "who each account signs in as, and commits as",
+      "new": "a new profile gets its own data folder, named as you type",
+      "identity": "each profile commits with its own name and email",
+      "open": "each profile opens its own GitHub Desktop, next to the others"
+    },
+    "folders": {
+      "src": "the app: Avalonia on .NET 10",
+      "assets": "fonts: Atkinson Hyperlegible (SIL OFL)",
+      "tools": "the icon maker, and readmotion/: the config, demo profiles and driver that record this README's media"
+    },
+    "roadmap": [
+      {
+        "text": "Profiles, launch and running status on Windows",
+        "done": true
+      },
+      {
+        "text": "Commit identity per profile",
+        "done": true
+      },
+      {
+        "text": "Sign-in hand-off on Windows",
+        "done": true
+      },
+      "Test on macOS and Linux",
+      "Sign-in hand-off on macOS and Linux",
+      "Signed-in badge on macOS and Linux"
+    ],
+    "sections": [
+      "banner",
+      "badges",
+      "nav",
+      "hero",
+      "note",
+      "whats_new",
+      "features",
+      "clips",
+      "controls",
+      "install",
+      "building",
+      "development",
+      "roadmap",
+      "license"
+    ],
+    "keep": true
+  }
+}

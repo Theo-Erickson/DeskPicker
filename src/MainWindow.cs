@@ -27,7 +27,7 @@ namespace DeskPicker
         readonly StackPanel bottom;
         readonly DispatcherTimer timer;
 
-        const double Gap = 16, CardMin = 280;
+        const double Gap = 16, CardMin = 280, Gutter = 14;
 
         public MainWindow()
         {
@@ -59,20 +59,27 @@ namespace DeskPicker
             DockPanel.SetDock(head, Dock.Top);
             root.Children.Add(head);
 
-            bottom = new StackPanel { Spacing = 10, Margin = new Thickness(0, 12, 0, 0) };
-            DockPanel.SetDock(bottom, Dock.Bottom);
-            root.Children.Add(bottom);
+            // Notices scroll on their own past a share of the window, so a pile of them can't
+            // push the profiles out of sight.
+            bottom = new StackPanel { Spacing = 10, Margin = new Thickness(0, 0, Gutter, 0) };
+            var notices = new ScrollViewer { Content = bottom, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, Margin = new Thickness(0, 12, 0, 0) };
+            SizeChanged += (s, e) => notices.MaxHeight = Math.Max(110, e.NewSize.Height * 0.36);
+            DockPanel.SetDock(notices, Dock.Bottom);
+            root.Children.Add(notices);
 
             // Cards share the width evenly: as many columns as fit at CardMin, each stretched
-            // to fill the row, and every card in a row as tall as the tallest.
-            field = new WrapPanel { ItemSpacing = Gap, LineSpacing = Gap };
+            // to fill the row, and every card in a row as tall as the tallest. The right
+            // margin keeps the scrollbar off the cards; the top leaves room for a lifted folder.
+            field = new WrapPanel { ItemSpacing = Gap, LineSpacing = Gap + 4, Margin = new Thickness(0, 4, Gutter, 10) };
             var scroll = new ScrollViewer { Content = field, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
             scroll.SizeChanged += (s, e) =>
             {
-                double w = e.NewSize.Width;
+                double w = e.NewSize.Width - Gutter;
                 int cols = Math.Max(1, (int)((w + Gap) / (CardMin + Gap)));
                 field.ItemWidth = Math.Floor((w - Gap * (cols - 1)) / cols);
+                FadeEdges(scroll);
             };
+            scroll.ScrollChanged += delegate { FadeEdges(scroll); };
             root.Children.Add(scroll);
             Content = root;
 
@@ -92,6 +99,21 @@ namespace DeskPicker
         }
 
         // ---------- page ----------
+
+        // Cards fade out at an edge with more of them beyond it, instead of being cut off.
+        static void FadeEdges(ScrollViewer s)
+        {
+            double h = s.Bounds.Height;
+            bool above = s.Offset.Y > 0.5, below = s.Offset.Y + s.Viewport.Height < s.Extent.Height - 0.5;
+            if (h <= 0 || (!above && !below)) { s.OpacityMask = null; return; }
+            double f = Math.Min(0.25, 28 / h);
+            var b = new LinearGradientBrush { StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative), EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative) };
+            b.GradientStops.Add(new GradientStop(above ? Colors.Transparent : Colors.Black, 0));
+            b.GradientStops.Add(new GradientStop(Colors.Black, f));
+            b.GradientStops.Add(new GradientStop(Colors.Black, 1 - f));
+            b.GradientStops.Add(new GradientStop(below ? Colors.Transparent : Colors.Black, 1));
+            s.OpacityMask = b;
+        }
 
         void Render(bool force = false)
         {
@@ -149,56 +171,52 @@ namespace DeskPicker
         {
             bool on = Profiles.IsRunning(running, p);
 
-            var name = Ui.Line(p.name, 20, "Text", FontWeights.SemiBold);
-            var pill = on ? Ui.Pill("Running", "RunBg", "OkText", "DotOk") : Ui.Pill(Profiles.IsDefault(p) ? "Closed · default" : "Closed", "Input", "Muted");
-            var top = new DockPanel();
-            DockPanel.SetDock(pill, Dock.Right);
-            top.Children.Add(pill);
-            top.Children.Add(name);
+            // The profile's name is written on the folder's tab; its status sits beside it.
+            var name = Ui.Line(p.name, 16, "Ink", FontWeights.SemiBold);
+            name.Tip(p.name);
+            var pill = on ? Ui.Pill("Running", "RunBg", "OkText", "DotOk") : Ui.Pill(Profiles.IsDefault(p) ? "Closed · default" : "Closed", "Panel", "Muted");
 
-            string account, accountBrush = "Sub";
-            if (string.IsNullOrEmpty(p.githubLogin)) { account = "No GitHub account set"; accountBrush = "Faint"; }
+            string account, accountBrush = "InkSub";
+            if (string.IsNullOrEmpty(p.githubLogin)) { account = "No GitHub account set"; accountBrush = "InkMuted"; }
             else if (signedIn == null) account = p.githubLogin;
             else if (signedIn.Contains(p.githubLogin)) account = p.githubLogin + " · signed in";
-            else { account = p.githubLogin + " · not signed in yet"; accountBrush = "WarnText"; }
+            else { account = p.githubLogin + " · not signed in yet"; accountBrush = "InkWarn"; }
 
             string commits = GitIdentity.Has(p)
                 ? ((p.gitName ?? "(global name)") + " <" + (p.gitEmail ?? "global email") + ">")
                 : "Your global git identity";
 
             // The end of the path is the part that tells profiles apart, so trim the start.
-            var folder = Ui.Line(Profiles.IsDefault(p) ? "Desktop's default folder" : p.dataDir, 11.5, "Muted");
+            var folder = Ui.Line(Profiles.IsDefault(p) ? "Desktop's default folder" : p.dataDir, 11.5, "InkMuted");
             folder.FontFamily = Ui.Mono;
             folder.TextTrimming = TextTrimming.PrefixCharacterEllipsis;
             folder.Tip(Profiles.DataDirOf(p));
 
-            var openBtn = Ui.Btn(on ? "Show window" : "Open", delegate { Open(p); }, on ? "BtnPillOutline" : "BtnPill");
-            var more = Ui.IconBtn("more", null, null, "BtnRound");
+            var openBtn = Ui.Btn(on ? "Show window" : "Open", delegate { Open(p); }, on ? "BtnPillInk" : "BtnPill");
+            var more = Ui.IconBtn("more", null, null, "BtnRoundInk", "InkSub");
             more.Tip("More");
             Avalonia.Automation.AutomationProperties.SetName(more, "More for " + p.name);
             more.Click += delegate { ShowMenu(more, p); };
             var actions = Ui.Row(6, openBtn, more);
             actions.Margin = new Thickness(0, 6, 0, 0);
 
-            var body = Ui.Stack(9, top,
-                Ui.IconLine("user", Ui.Line(account, 13.5, accountBrush)),
-                Ui.IconLine("commit", Ui.Line(commits, 13.5, "Sub")),
+            var body = Ui.Stack(9,
+                Ui.IconLine("user", Ui.Line(account, 13.5, accountBrush), 8, "InkMuted"),
+                Ui.IconLine("commit", Ui.Line(commits, 13.5, "InkSub"), 8, "InkMuted"),
                 folder, actions);
-            var card = Ui.Panel(body, 18, "Panel", on ? "OkBorder" : "Border", 14);
+            var card = Ui.Folder(name, body, pill, on);
             card.DoubleTapped += delegate { Open(p); };
             return card;
         }
 
         Control NewCard()
         {
-            var plus = Ui.Icon("plus", 28, "Faint", 1.6);
-            var t = Ui.Text("New profile", 16, "Sub", FontWeights.Medium);
+            var tab = Ui.Row(7, Ui.Icon("plus", 14, "Muted", 2), Ui.Text("New profile", 14, "Sub", FontWeights.Medium));
             var sub = Ui.Text("Its own sign-in and repositories", 12.5, "Muted");
-            var inner = Ui.Stack(8, plus, t, sub);
-            inner.HorizontalAlignment = HorizontalAlignment.Center;
-            inner.VerticalAlignment = VerticalAlignment.Center;
-            t.HorizontalAlignment = sub.HorizontalAlignment = HorizontalAlignment.Center;
-            var b = new Button { Theme = Ui.Theme("Card"), Content = inner, MinHeight = 190, Background = Brushes.Transparent };
+            sub.HorizontalAlignment = HorizontalAlignment.Center;
+            sub.VerticalAlignment = VerticalAlignment.Center;
+            sub.TextAlignment = TextAlignment.Center;
+            var b = new Button { Theme = Ui.Theme("Bare"), Content = Ui.Folder(tab, sub, null, false, true), MinHeight = 190 };
             Avalonia.Automation.AutomationProperties.SetName(b, "Add a new profile");
             b.Click += delegate { AddProfile(); };
             return b;
@@ -240,7 +258,9 @@ namespace DeskPicker
             var snapshot = profiles.ToList();
             Task.Run(() =>
             {
-                var r = Desktop.RunningDirs();
+                var pids = new Dictionary<uint, string>();
+                var r = Desktop.RunningDirs(pids);
+                Desktop.Retitle(snapshot, pids);
                 var s = Keychain.SignedInLogins();
                 var w = SignIn.Waiting(snapshot, r);
                 return Tuple.Create(r, s, w);
@@ -300,10 +320,10 @@ namespace DeskPicker
 
         void EditProfile(Profile p)
         {
-            var copy = new Profile { name = p.name, dataDir = p.dataDir, githubLogin = p.githubLogin, gitName = p.gitName, gitEmail = p.gitEmail };
+            var copy = new Profile { name = p.name, dataDir = p.dataDir, githubLogin = p.githubLogin, gitName = p.gitName, gitEmail = p.gitEmail, windowTitle = p.windowTitle };
             if (!Dialogs.EditProfile(this, copy, false, profiles.IndexOf(p))) return;
             bool identityChanged = copy.gitName != p.gitName || copy.gitEmail != p.gitEmail || copy.githubLogin != p.githubLogin;
-            p.name = copy.name; p.githubLogin = copy.githubLogin; p.gitName = copy.gitName; p.gitEmail = copy.gitEmail;
+            p.name = copy.name; p.githubLogin = copy.githubLogin; p.gitName = copy.gitName; p.gitEmail = copy.gitEmail; p.windowTitle = copy.windowTitle;
             Save();
             if (identityChanged && Profiles.IsRunning(running, p))
                 Dialogs.Info(this, "Saved", "Close and reopen " + p.name + " for the new commit identity to take effect.");

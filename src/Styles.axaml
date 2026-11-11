@@ -76,7 +76,36 @@
       <Setter Property="BorderBrush" Value="Transparent"/>
     </ControlTheme>
 
-    <!-- Clickable card (the New profile card) -->
+    <!-- Buttons on a manila folder's front: brown ink instead of the dark panel colors -->
+    <ControlTheme x:Key="BtnPillInk" TargetType="Button" BasedOn="{StaticResource BtnPillOutline}">
+      <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource InkMuted}"/>
+      <Setter Property="BorderThickness" Value="1.5"/>
+      <Style Selector="^:pointerover /template/ Border#b"><Setter Property="Background" Value="{DynamicResource InkHover}"/><Setter Property="Opacity" Value="1"/></Style>
+    </ControlTheme>
+
+    <ControlTheme x:Key="BtnRoundInk" TargetType="Button" BasedOn="{StaticResource BtnRound}">
+      <Style Selector="^:pointerover /template/ Border#b"><Setter Property="Background" Value="{DynamicResource InkHover}"/><Setter Property="Opacity" Value="1"/></Style>
+    </ControlTheme>
+
+    <!-- A button that draws nothing itself: its content is the whole look (the New profile folder) -->
+    <ControlTheme x:Key="Bare" TargetType="Button">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+      <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+      <Setter Property="Template">
+        <ControlTemplate>
+          <ContentPresenter Name="PART_ContentPresenter" Content="{TemplateBinding Content}" Background="Transparent"
+                            HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                            VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"/>
+        </ControlTemplate>
+      </Setter>
+    </ControlTheme>
+
+    <!-- Clickable card -->
     <ControlTheme x:Key="Card" TargetType="Button">
       <Setter Property="Background" Value="{DynamicResource Panel}"/>
       <Setter Property="BorderBrush" Value="{DynamicResource Border}"/>
@@ -135,6 +164,23 @@
     <Setter Property="SelectionForegroundBrush" Value="{DynamicResource AccentText}"/>
     <Setter Property="CaretBrush" Value="{DynamicResource Text}"/>
   </Style>
+
+  <!-- Profile folders lift a little under the pointer -->
+  <Style Selector="Grid.folder">
+    <Setter Property="RenderTransform" Value="translateY(0px)"/>
+    <Setter Property="Transitions">
+      <Transitions><TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.14"/></Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Grid.folder:pointerover"><Setter Property="RenderTransform" Value="translateY(-3px)"/></Style>
+
+  <!-- The empty New profile folder: an outline that fills in under the pointer or focus -->
+  <Style Selector="Border.ghost">
+    <Setter Property="Background" Value="{DynamicResource Bg}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource Dashed}"/>
+  </Style>
+  <Style Selector="Button:pointerover Border.ghost"><Setter Property="Background" Value="{DynamicResource Panel}"/></Style>
+  <Style Selector="Button:focus-visible Border.ghost"><Setter Property="BorderBrush" Value="{DynamicResource Accent}"/></Style>
 
   <Style Selector="ScrollBar /template/ Thumb">
     <Setter Property="Background" Value="{DynamicResource Scroll}"/>

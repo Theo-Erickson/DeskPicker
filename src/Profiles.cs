@@ -20,6 +20,8 @@ namespace DeskPicker
         public string gitName { get; set; }       // commit identity; null = the global git config's
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string gitEmail { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string windowTitle { get; set; }   // its Desktop window's title; null = "GitHub Desktop (name)"
     }
 
     // The profile list (profiles.json next to the app) and the things you can do to a
@@ -50,6 +52,15 @@ namespace DeskPicker
         }
 
         public static string DataDirOf(Profile p) { return IsDefault(p) ? Desktop.DefaultDir : p.dataDir; }
+
+        // What the profile's Desktop window is called, so the copies can be told apart in the
+        // taskbar and Alt+Tab.
+        public static string WindowTitle(Profile p)
+        {
+            return string.IsNullOrWhiteSpace(p.windowTitle) ? DefaultWindowTitle(p.name) : p.windowTitle.Trim();
+        }
+
+        public static string DefaultWindowTitle(string name) { return "GitHub Desktop (" + (name ?? "").Trim() + ")"; }
 
         public static bool IsDefault(Profile p) { return string.IsNullOrEmpty(p.dataDir); }
 
@@ -129,11 +140,11 @@ namespace DeskPicker
         // comes along) and returns where it went. Null if this system isn't supported yet.
         public static string CreateShortcut(Profile p)
         {
-            string safe = Regex.Replace(p.name, "[\\\\/:*?\"<>|]", "").Trim();
+            string safe = Regex.Replace(WindowTitle(p), "[\\\\/:*?\"<>|]", "").Trim();
             string self = Environment.ProcessPath;
             if (OperatingSystem.IsWindows())
             {
-                string path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "GitHub Desktop (" + safe + ").lnk");
+                string path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), safe + ".lnk");
                 dynamic shell = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell"));
                 dynamic lnk = shell.CreateShortcut(path);
                 lnk.TargetPath = self;
@@ -141,7 +152,7 @@ namespace DeskPicker
                 lnk.WorkingDirectory = Path.GetDirectoryName(self);
                 if (File.Exists(Desktop.WindowsStub)) lnk.IconLocation = Desktop.WindowsStub + ",0";
                 lnk.Save();
-                return "your desktop, as GitHub Desktop (" + safe + ")";
+                return "your desktop, as " + safe;
             }
             if (OperatingSystem.IsLinux())
             {
@@ -149,9 +160,9 @@ namespace DeskPicker
                 Directory.CreateDirectory(dir);
                 string path = Path.Combine(dir, "deskpicker-" + Regex.Replace(safe.ToLowerInvariant(), "[^a-z0-9]+", "-") + ".desktop");
                 File.WriteAllText(path,
-                    "[Desktop Entry]\nType=Application\nName=GitHub Desktop (" + safe + ")\n" +
+                    "[Desktop Entry]\nType=Application\nName=" + safe + "\n" +
                     "Exec=\"" + self + "\" --open \"" + p.name.Replace("\"", "") + "\"\nIcon=github-desktop\nTerminal=false\n");
-                return "your app menu, as GitHub Desktop (" + safe + ")";
+                return "your app menu, as " + safe;
             }
             return null;
         }
