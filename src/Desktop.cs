@@ -21,10 +21,14 @@ namespace DeskPicker
         const string MacApp = "/Applications/GitHub Desktop.app";
         const string Flatpak = "io.github.shiftey.Desktop";
 
-        // Where Desktop keeps its data when it's started normally.
+        // Where Desktop keeps its data when it's started normally. The Flatpak has its own
+        // ~/.config, under ~/.var/app.
         public static readonly string DefaultDir =
             OperatingSystem.IsMacOS() ? Path.Combine(Home, "Library", "Application Support", "GitHub Desktop")
+            : IsFlatpak(FindExe()) ? Path.Combine(Home, ".var", "app", Flatpak, "config", "GitHub Desktop")
             : Path.Combine(AppData, "GitHub Desktop");   // %APPDATA% on Windows, ~/.config on Linux
+
+        static bool IsFlatpak(string exe) { return exe != null && exe.EndsWith(Flatpak, StringComparison.Ordinal); }
 
         // Folders for new profiles sit next to the default one.
         public static string ProfilesRoot { get { return Path.GetDirectoryName(DefaultDir); } }
@@ -102,7 +106,7 @@ namespace DeskPicker
                 if (gitConfig != null) { psi.ArgumentList.Add("--env"); psi.ArgumentList.Add("GIT_CONFIG_GLOBAL=" + gitConfig); }
                 psi.ArgumentList.Add("--args");
             }
-            else if (exe.EndsWith(Flatpak, StringComparison.Ordinal))
+            else if (IsFlatpak(exe))
             {
                 psi = new ProcessStartInfo("flatpak");
                 psi.ArgumentList.Add("run");
@@ -127,27 +131,35 @@ namespace DeskPicker
 
         // ---------- running-instance detection ----------
 
-        // Data folders whose Desktop main process is alive. On Windows 'pids', if given, is
+        // Data folders whose Desktop main process is alive. 'pids', if given, is
         // filled with each main process's id and data folder (for Retitle).
         public static HashSet<string> RunningDirs(Dictionary<uint, string> pids = null)
         {
             var set = new HashSet<string>(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
             try
             {
-                if (OperatingSystem.IsWindows())
+                foreach (var kv in MainProcesses())
                 {
-                    foreach (var kv in WindowsCommandLines())
-                    {
-                        if (!IsMain(kv.Value)) continue;
-                        string dir = Trim(DataDirIn(kv.Value) ?? DefaultDir);
-                        set.Add(dir);
-                        if (pids != null) pids[kv.Key] = dir;
-                    }
+                    string dir = DirOf(kv.Value);
+                    set.Add(dir);
+                    if (pids != null) pids[kv.Key] = dir;
                 }
-                else foreach (var cmd in MainCommandLines()) set.Add(Trim(DataDirIn(cmd) ?? DefaultDir));
             }
             catch { }
             return set;
+        }
+
+        // The main process of the Desktop using 'dataDir', or 0.
+        public static uint MainPidOf(string dataDir)
+        {
+            try
+            {
+                string want = Trim(dataDir);
+                foreach (var kv in MainProcesses())
+                    if (string.Equals(DirOf(kv.Value), want, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)) return kv.Key;
+            }
+            catch { }
+            return 0;
         }
 
         // The --user-data-dir in a command line, or null. It comes three ways:
@@ -164,63 +176,125 @@ namespace DeskPicker
             return null;
         }
 
-        public static string Trim(string dir) { return dir.TrimEnd('\\', '/'); }
-
-        // Command lines of Desktop's main processes: not Chromium's helpers (--type=), and
-        // not the short-lived copies that only pass a link along (--protocol-launcher).
-        static IEnumerable<string> MainCommandLines()
+        // The data folder a Desktop command line uses: its --user-data-dir, or Desktop's own default.
+        static string DirOf(string cmd)
         {
-            IEnumerable<string> all;
-            if (OperatingSystem.IsWindows()) all = WindowsCommandLines().Select(x => x.Value);
-            else if (OperatingSystem.IsMacOS()) all = MacCommandLines();
-            else all = LinuxCommandLines();
-            return all.Where(IsMain);
+            return Trim(DataDirIn(cmd) ?? DefaultDir);
         }
 
-        static bool IsMain(string cmd) { return !cmd.Contains("--type=") && !cmd.Contains("--protocol-launcher"); }
+        public static string Trim(string dir) { return dir.TrimEnd('\\', '/'); }
 
-        // Process id -> command line for every GitHubDesktop.exe.
-        [System.Runtime.Versioning.SupportedOSPlatform("windows")]
-        public static Dictionary<uint, string> WindowsCommandLines()
+        // Process id -> command line of Desktop's main processes: not Chromium's helpers
+        // (--type=), and not the short-lived copies that only pass a link along
+        // (--protocol-launcher on Windows, the bare link on Linux).
+        static Dictionary<uint, string> MainProcesses()
         {
-            var d = new Dictionary<uint, string>();
-            using (var q = new ManagementObjectSearcher("SELECT ProcessId, CommandLine FROM Win32_Process WHERE Name='GitHubDesktop.exe'"))
+            if (OperatingSystem.IsWindows())
+            {
+                // A launcher becomes the main process itself when no default copy was open to
+                // take its link: then it has Chromium helpers of its own.
+                var all = WindowsProcesses();
+                var parents = new HashSet<uint>(all.Values.Where(x => x.Cmd.Contains("--type=")).Select(x => x.Parent));
+                return all.Where(x => !x.Value.Cmd.Contains("--type=") && (!x.Value.Cmd.Contains("--protocol-launcher") || parents.Contains(x.Key)))
+                    .ToDictionary(x => x.Key, x => x.Value.Cmd);
+            }
+            var others = OperatingSystem.IsMacOS() ? MacCommandLines() : LinuxCommandLines();
+            return others.Where(x => !x.Value.Contains("--type=") && !x.Value.Contains("x-github-desktop-auth://"))
+                .ToDictionary(x => x.Key, x => x.Value);
+        }
+
+        public class WinProcess
+        {
+            public string Cmd;
+            public uint Parent;
+            public DateTime StartedUtc;
+        }
+
+        // Every GitHubDesktop.exe: its command line, parent and start time.
+        [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+        public static Dictionary<uint, WinProcess> WindowsProcesses()
+        {
+            var d = new Dictionary<uint, WinProcess>();
+            using (var q = new ManagementObjectSearcher("SELECT ProcessId, ParentProcessId, CreationDate, CommandLine FROM Win32_Process WHERE Name='GitHubDesktop.exe'"))
             {
                 foreach (ManagementObject pr in q.Get())
                 {
                     string cmd = pr["CommandLine"] as string;
-                    if (!string.IsNullOrEmpty(cmd)) d[(uint)pr["ProcessId"]] = cmd;
+                    if (string.IsNullOrEmpty(cmd)) continue;
+                    DateTime started = DateTime.MinValue;
+                    try { started = ManagementDateTimeConverter.ToDateTime((string)pr["CreationDate"]).ToUniversalTime(); } catch { }
+                    d[(uint)pr["ProcessId"]] = new WinProcess { Cmd = cmd, Parent = (uint)pr["ParentProcessId"], StartedUtc = started };
                 }
             }
             return d;
         }
 
-        static IEnumerable<string> MacCommandLines()
+        // Process id -> command line for every GitHubDesktop.exe.
+        [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+        public static Dictionary<uint, string> WindowsCommandLines()
         {
-            var psi = new ProcessStartInfo("ps", "-axww -o args=") { RedirectStandardOutput = true, UseShellExecute = false };
+            return WindowsProcesses().ToDictionary(x => x.Key, x => x.Value.Cmd);
+        }
+
+        // When a Linux process started (UTC), from /proc/<pid>/stat; MinValue if unknown.
+        public static DateTime LinuxStartedUtc(uint pid)
+        {
+            try
+            {
+                // Field 22 is the start time in clock ticks since boot; the name in field 2
+                // can contain spaces, so count from its closing parenthesis.
+                string stat = File.ReadAllText("/proc/" + pid + "/stat");
+                var fields = stat.Substring(stat.LastIndexOf(')') + 2).Split(' ');
+                long ticks = long.Parse(fields[19]);
+                long boot = long.Parse(File.ReadAllLines("/proc/stat").First(l => l.StartsWith("btime ")).Substring(6));
+                return DateTimeOffset.FromUnixTimeSeconds(boot).UtcDateTime.AddSeconds(ticks / 100.0);   // USER_HZ is 100 on Linux
+            }
+            catch { return DateTime.MinValue; }
+        }
+
+        static Dictionary<uint, string> MacCommandLines()
+        {
+            var d = new Dictionary<uint, string>();
+            var psi = new ProcessStartInfo("ps", "-axww -o pid=,args=") { RedirectStandardOutput = true, UseShellExecute = false };
             using (var p = Process.Start(psi))
             {
                 string all = p.StandardOutput.ReadToEnd();
                 p.WaitForExit(3000);
-                return all.Split('\n').Where(l => l.Contains("GitHub Desktop.app/Contents/MacOS/GitHub Desktop")).ToList();
+                foreach (var line in all.Split('\n'))
+                {
+                    var m = Regex.Match(line, "^\\s*(\\d+)\\s+(.*GitHub Desktop\\.app/Contents/MacOS/GitHub Desktop.*)$");
+                    if (m.Success) d[uint.Parse(m.Groups[1].Value)] = m.Groups[2].Value;
+                }
             }
+            return d;
         }
 
-        static IEnumerable<string> LinuxCommandLines()
+        // Chromium rewrites its processes' /proc/<pid>/cmdline as one space-separated string
+        // (for the process title), so match the program at the start of the joined line:
+        // /usr/lib/github-desktop/github-desktop, or /app/github-desktop/github-desktop in the
+        // Flatpak (not bwrap or flatpak themselves).
+        static readonly Regex LinuxDesktopExe = new Regex("^(?:\\S*/)?github-desktop(?:\\s|$)");
+
+        static Dictionary<uint, string> LinuxCommandLines()
         {
-            var list = new List<string>();
+            return LinuxProcesses()
+                .Select(x => new KeyValuePair<uint, string>(x.Key, string.Join(" ", x.Value)))
+                .Where(x => LinuxDesktopExe.IsMatch(x.Value))
+                .ToDictionary(x => x.Key, x => x.Value);
+        }
+
+        // Process id -> arguments (argv[0] first) for every process we can see in /proc.
+        public static Dictionary<uint, string[]> LinuxProcesses()
+        {
+            var d = new Dictionary<uint, string[]>();
             foreach (var dir in Directory.GetDirectories("/proc"))
             {
-                if (!char.IsDigit(Path.GetFileName(dir)[0])) continue;
-                try
-                {
-                    var args = File.ReadAllText(Path.Combine(dir, "cmdline")).Split('\0');
-                    if (args.Length > 0 && Path.GetFileName(args[0]).StartsWith("github-desktop", StringComparison.Ordinal))
-                        list.Add(string.Join(" ", args.Where(a => a.Length > 0)));
-                }
+                uint pid;
+                if (!uint.TryParse(Path.GetFileName(dir), out pid)) continue;
+                try { d[pid] = File.ReadAllText(Path.Combine(dir, "cmdline")).Split('\0').Where(a => a.Length > 0).ToArray(); }
                 catch { }
             }
-            return list;
+            return d;
         }
 
         // ---------- window titles ----------

@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using Avalonia.Controls.ApplicationLifetimes;
 
 namespace DeskPicker
 {
@@ -90,9 +91,13 @@ namespace DeskPicker
 
         // ---------- passing the link along ----------
 
-        // Only Windows so far: elsewhere the link reaches Desktop another way (macOS sends
-        // it as an Apple Event), so there's nothing to read it from.
-        public static bool CanRelay { get { return OperatingSystem.IsWindows(); } }
+        // On Windows and Linux the link passes through a process's command line, where we
+        // can read it. On macOS it's an Apple Event to the registered app, so DeskPicker has
+        // to be an .app that can register itself (see Mac).
+        public static bool CanRelay
+        {
+            get { return OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || (OperatingSystem.IsMacOS() && Mac.OwnBundle != null); }
+        }
 
         static readonly object gate = new object();
         static CancellationTokenSource watching;
@@ -107,28 +112,131 @@ namespace DeskPicker
             lock (gate)
             {
                 if (pending != null && watched != null && pending.Profile == watched.Profile && pending.Since == watched.Since) return;
+                bool wasWatching = watching != null;
                 watching?.Cancel();
                 watching = null;
                 watched = pending;
-                if (pending == null || !OperatingSystem.IsWindows()) return;   // CanRelay
+                if (pending == null || !CanRelay)
+                {
+                    if (OperatingSystem.IsMacOS() && wasWatching) Mac.SetHandler(Mac.DesktopBundleId);
+                    return;
+                }
                 var cts = new CancellationTokenSource(Patience);
                 watching = cts;
-                Task.Run(() => Relay(pending.Profile, cts.Token));
+                if (OperatingSystem.IsMacOS()) Task.Run(() => { if (OperatingSystem.IsMacOS()) HoldHandler(cts.Token); });
+                else Task.Run(() => Relay(pending.Profile, pending.Since, cts.Token));
             }
         }
 
-        static readonly Regex LinkArg = new Regex("--protocol-launcher\\s+\"?(x-github-desktop-auth://[^\"\\s]+)", RegexOptions.IgnoreCase);
+        // ---------- macOS ----------
 
-        [System.Runtime.Versioning.SupportedOSPlatform("windows")]
-        static void Relay(Profile target, CancellationToken stop)
+        // While a profile is waiting, DeskPicker is the app that opens sign-in links. Every
+        // Desktop that starts takes the links back, so keep claiming them; give them back
+        // to Desktop when done (or after 'Patience').
+        [System.Runtime.Versioning.SupportedOSPlatform("macos")]
+        static void HoldHandler(CancellationToken stop)
+        {
+            try { Mac.Register(Mac.OwnBundle); } catch { }
+            while (!stop.IsCancellationRequested)
+            {
+                try { Mac.SetHandler(OwnBundleId); } catch { }
+                stop.WaitHandle.WaitOne(1000);
+            }
+            lock (gate) { if (watching == null || watching.Token == stop) try { Mac.SetHandler(Mac.DesktopBundleId); } catch { } }
+        }
+
+        // Must match CFBundleIdentifier in build.sh.
+        const string OwnBundleId = "io.github.theo-erickson.deskpicker";
+
+        // macOS opened a link with DeskPicker (on the UI thread). Hand it to the waiting
+        // profile, or, if nobody is waiting any more, to the default copy that would have
+        // got it anyway.
+        [System.Runtime.Versioning.SupportedOSPlatform("macos")]
+        public static void Opened(string link)
+        {
+            if (!link.StartsWith(Mac.Scheme + "://", StringComparison.OrdinalIgnoreCase)) return;
+            Profile target;
+            lock (gate) target = watching != null ? watched?.Profile : null;
+            if (target != null)
+            {
+                uint pid = Desktop.MainPidOf(Profiles.DataDirOf(target));
+                if (pid != 0 && Mac.SendLink((int)pid, link) == 0)
+                {
+                    Watch(null);
+                    Relayed?.Invoke(target);
+                    return;
+                }
+            }
+            uint main = Desktop.MainPidOf(Desktop.DefaultDir);
+            if (main != 0 && Mac.SendLink((int)main, link) == 0) return;
+            // No default copy open: give the links back to Desktop and let macOS start it.
+            Mac.SetHandler(Mac.DesktopBundleId);
+            try
+            {
+                var psi = new System.Diagnostics.ProcessStartInfo("open") { UseShellExecute = false };
+                psi.ArgumentList.Add("-b");
+                psi.ArgumentList.Add(Mac.DesktopBundleId);
+                psi.ArgumentList.Add(link);
+                System.Diagnostics.Process.Start(psi);
+            }
+            catch { }
+        }
+
+        // Starts listening for links macOS opens with DeskPicker. Call once Avalonia is set up.
+        [System.Runtime.Versioning.SupportedOSPlatform("macos")]
+        public static void ListenForLinks()
+        {
+            var life = Application.Current?.TryGetFeature<IActivatableLifetime>();
+            if (life == null) return;
+            life.Activated += (s, e) =>
+            {
+                var uri = (e as ProtocolActivatedEventArgs)?.Uri;
+                if (uri != null) Opened(uri.OriginalString);
+            };
+        }
+
+        static readonly Regex LinkArg = new Regex("\"?(x-github-desktop-auth://[^\"\\s]+)", RegexOptions.IgnoreCase);
+
+        // Short-lived processes that carry a link. On Windows that's "GitHubDesktop.exe
+        // --protocol-launcher <link>". On Linux the link is a plain argument, and several
+        // processes carry it on the way (xdg-open, then "github-desktop <link>", or
+        // "flatpak run ... <link>" for the Flatpak); whichever we see first will do.
+        static Dictionary<uint, string> LinkCarriers()
+        {
+            if (OperatingSystem.IsWindows()) return Desktop.WindowsCommandLines();
+            if (OperatingSystem.IsLinux())
+                return Desktop.LinuxProcesses()
+                    .Select(x => new KeyValuePair<uint, string>(x.Key, string.Join(" ", x.Value)))
+                    .Where(x => x.Value.Contains("x-github-desktop-auth://", StringComparison.OrdinalIgnoreCase))
+                    .ToDictionary(x => x.Key, x => x.Value);
+            return new Dictionary<uint, string>();
+        }
+
+        // When a link-carrying process started (UTC); MinValue if unknown.
+        static DateTime StartedUtc(uint pid, Dictionary<uint, Desktop.WinProcess> windows)
+        {
+            if (windows != null) { Desktop.WinProcess w; return windows.TryGetValue(pid, out w) ? w.StartedUtc : DateTime.MinValue; }
+            return OperatingSystem.IsLinux() ? Desktop.LinuxStartedUtc(pid) : DateTime.MinValue;
+        }
+
+        static void Relay(Profile target, DateTime since, CancellationToken stop)
         {
             HashSet<uint> seen = null;
             while (!stop.IsCancellationRequested)
             {
                 Dictionary<uint, string> now;
-                try { now = Desktop.WindowsCommandLines(); }
+                try { now = LinkCarriers(); }
                 catch { now = new Dictionary<uint, string>(); }
-                if (seen == null) seen = new HashSet<uint>(now.Keys);   // what was already there doesn't count
+                if (seen == null)
+                {
+                    // Carriers already there when we started watching count only if they
+                    // started after the sign-in did: when you've signed in to the app before,
+                    // the browser comes straight back, often before the first look. Older ones
+                    // carry an earlier link (say, a launcher that became the main copy).
+                    Dictionary<uint, Desktop.WinProcess> windows = null;
+                    if (OperatingSystem.IsWindows()) try { windows = Desktop.WindowsProcesses(); } catch { }
+                    seen = new HashSet<uint>(now.Keys.Where(pid => StartedUtc(pid, windows) < since.AddSeconds(-2)));
+                }
                 foreach (var kv in now)
                 {
                     if (!seen.Add(kv.Key) || kv.Value.Contains("--user-data-dir")) continue;
@@ -139,7 +247,7 @@ namespace DeskPicker
                     return;
                 }
                 // The launcher process lives for well under a second, so look often.
-                stop.WaitHandle.WaitOne(100);
+                stop.WaitHandle.WaitOne(50);
             }
         }
     }
