@@ -19,8 +19,11 @@ namespace DeskPicker
             {"Scroll","#2f3744"},
             // the profile cards are manila folders: a darker back and tab, a lighter front flap,
             // a sheet of paper between them, and brown "ink" for what's written on the front
-            {"ManilaBack","#c4a466"}, {"Manila","#e4cc94"}, {"ManilaEdge","#f2e2b8"}, {"Paper","#f6f1e4"},
-            {"Ink","#2b2112"}, {"InkSub","#4a3b22"}, {"InkMuted","#7b6644"}, {"InkWarn","#8e4a00"}, {"InkHover","#33000000"},
+            {"ManilaBack","#c4a466"}, {"Manila","#e8d29e"}, {"ManilaEdge","#f5e7c2"},
+            {"Paper","#f6f1e4"}, {"Paper2","#ece5d2"}, {"Paper3","#fbf8ef"}, {"PaperLine","#14000000"},
+            {"Ink","#241a0b"}, {"InkSub","#3d2f17"}, {"InkMuted","#6a5531"}, {"InkWarn","#8e4a00"}, {"InkHover","#1e3c280a"},
+            // the GitHub mark pressed into the flap, and its color while the profile runs
+            {"EmbossLo","#d5ba7c"}, {"EmbossHi","#fbf0d2"}, {"EmbossLit","#c8ab68"},
         };
 
         // Fluent's own brushes for the controls DeskPicker doesn't restyle, pointed at ours.

@@ -174,6 +174,25 @@
   </Style>
   <Style Selector="Grid.folder:pointerover"><Setter Property="RenderTransform" Value="translateY(-3px)"/></Style>
 
+  <!-- The embossed GitHub mark on a folder: rises under the pointer, sinks when pressed -->
+  <Style Selector="Button.mark Grid.emboss">
+    <Setter Property="RenderTransform" Value="translateY(0px)"/>
+    <Setter Property="Transitions">
+      <Transitions><TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.2"/></Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Button.mark:pointerover Grid.emboss">
+    <Setter Property="RenderTransform" Value="translateY(-2px)"/>
+    <Setter Property="Effect"><DropShadowEffect OffsetX="0" OffsetY="3" BlurRadius="5" Color="#553c280a"/></Setter>
+  </Style>
+  <Style Selector="Button.mark:pressed Grid.emboss">
+    <Setter Property="RenderTransform" Value="translateY(1px)"/>
+    <Setter Property="Effect" Value="{x:Null}"/>
+  </Style>
+  <Style Selector="Button.mark:focus-visible Grid.emboss">
+    <Setter Property="Effect"><DropShadowEffect OffsetX="0" OffsetY="0" BlurRadius="6" Color="#4fc06a"/></Setter>
+  </Style>
+
   <!-- The empty New profile folder: an outline that fills in under the pointer or focus -->
   <Style Selector="Border.ghost">
     <Setter Property="Background" Value="{DynamicResource Bg}"/>

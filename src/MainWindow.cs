@@ -21,6 +21,7 @@ namespace DeskPicker
         DateTime relayedAt;
         bool refreshing, statusKnown;
         string shown;                        // what the page last showed, to skip needless redraws
+        HashSet<string> shownRunning;        // profiles the page last showed open (null = none shown yet)
 
         readonly TextBlock caption;
         readonly WrapPanel field;
@@ -133,6 +134,7 @@ namespace DeskPicker
             {
                 foreach (var p in profiles) field.Children.Add(Card(p));
                 field.Children.Add(NewCard());
+                shownRunning = new HashSet<string>(profiles.Where(p => Profiles.IsRunning(running, p)).Select(p => p.name));
             }
 
             bottom.Children.Clear();
@@ -172,11 +174,11 @@ namespace DeskPicker
             bool on = Profiles.IsRunning(running, p);
 
             // The profile's name is written on the folder's tab; its status sits beside it.
-            var name = Ui.Line(p.name, 16, "Ink", FontWeights.SemiBold);
+            var name = Ui.Line(p.name, 17, "Ink", FontWeights.Bold);
             name.Tip(p.name);
             var pill = on ? Ui.Pill("Running", "RunBg", "OkText", "DotOk") : Ui.Pill(Profiles.IsDefault(p) ? "Closed · default" : "Closed", "Panel", "Muted");
 
-            string account, accountBrush = "InkSub";
+            string account, accountBrush = "Ink";
             if (string.IsNullOrEmpty(p.githubLogin)) { account = "No GitHub account set"; accountBrush = "InkMuted"; }
             else if (signedIn == null) account = p.githubLogin;
             else if (signedIn.Contains(p.githubLogin)) account = p.githubLogin + " · signed in";
@@ -187,24 +189,31 @@ namespace DeskPicker
                 : "Your global git identity";
 
             // The end of the path is the part that tells profiles apart, so trim the start.
-            var folder = Ui.Line(Profiles.IsDefault(p) ? "Desktop's default folder" : p.dataDir, 11.5, "InkMuted");
+            var folder = Ui.Line(Profiles.IsDefault(p) ? "Desktop's default folder" : p.dataDir, 13, "InkSub");
             folder.FontFamily = Ui.Mono;
             folder.TextTrimming = TextTrimming.PrefixCharacterEllipsis;
             folder.Tip(Profiles.DataDirOf(p));
 
-            var openBtn = Ui.Btn(on ? "Show window" : "Open", delegate { Open(p); }, on ? "BtnPillInk" : "BtnPill");
+            // The embossed GitHub mark in the flap's corner is the Open / Show window button.
+            var mark = Ui.EmbossedMark(on ? "Show window" : "Open", on, delegate { Open(p); });
+            Avalonia.Automation.AutomationProperties.SetName(mark, (on ? "Show " : "Open ") + p.name);
+            mark.Tip(on ? "Bring " + p.name + "'s GitHub Desktop forward" : "Open " + p.name + " in GitHub Desktop");
             var more = Ui.IconBtn("more", null, null, "BtnRoundInk", "InkSub");
             more.Tip("More");
             Avalonia.Automation.AutomationProperties.SetName(more, "More for " + p.name);
             more.Click += delegate { ShowMenu(more, p); };
-            var actions = Ui.Row(6, openBtn, more);
-            actions.Margin = new Thickness(0, 6, 0, 0);
 
             var body = Ui.Stack(9,
-                Ui.IconLine("user", Ui.Line(account, 13.5, accountBrush), 8, "InkMuted"),
-                Ui.IconLine("commit", Ui.Line(commits, 13.5, "InkSub"), 8, "InkMuted"),
-                folder, actions);
-            var card = Ui.Folder(name, body, pill, on);
+                Ui.IconLine("user", Ui.Line(account, 15.5, accountBrush, FontWeights.Medium), 10, "InkMuted"),
+                Ui.IconLine("commit", Ui.Line(commits, 15.5, "Ink", FontWeights.Medium), 10, "InkMuted"),
+                folder);
+
+            // A profile that just opened or closed is built in its old state and then switched,
+            // so its folder animates open (or shut) instead of appearing that way. On the first
+            // showing, every open profile's folder opens as DeskPicker comes up.
+            bool was = shownRunning != null && shownRunning.Contains(p.name);
+            var card = new FolderCard(name, pill, body, more, mark, was);
+            if (was != on) Dispatcher.UIThread.Post(() => card.SetRunning(on), DispatcherPriority.Background);
             card.DoubleTapped += delegate { Open(p); };
             return card;
         }
@@ -216,7 +225,8 @@ namespace DeskPicker
             sub.HorizontalAlignment = HorizontalAlignment.Center;
             sub.VerticalAlignment = VerticalAlignment.Center;
             sub.TextAlignment = TextAlignment.Center;
-            var b = new Button { Theme = Ui.Theme("Bare"), Content = Ui.Folder(tab, sub, null, false, true), MinHeight = 190 };
+            // as tall as a profile folder, without the room their branches take below
+            var b = new Button { Theme = Ui.Theme("Bare"), Content = Ui.Folder(tab, sub, null, false, true), MinHeight = 254, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, FolderCard.Headroom, 0, 0) };
             Avalonia.Automation.AutomationProperties.SetName(b, "Add a new profile");
             b.Click += delegate { AddProfile(); };
             return b;
