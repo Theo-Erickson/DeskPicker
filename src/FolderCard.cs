@@ -15,7 +15,8 @@ namespace DeskPicker
     {
         static readonly Easing Spring = new BackEaseOut();
         static readonly TimeSpan PageTime = TimeSpan.FromSeconds(0.55);
-        public const double Headroom = 26;
+        public const double Headroom = 4;
+        const double PageRise = 12;   // how far above the folder's mouth the pages may show
 
         readonly Border pageA, pageB, pageC;
         readonly Panel breath;
@@ -25,7 +26,7 @@ namespace DeskPicker
 
         public bool Running => on;
 
-        // 'mark' is the folder's main button; 'more' sits in the flap's top corner.
+        // 'mark' is the folder's main button, at the flap's right; 'more' sits beside the status.
         public FolderCard(Control tab, Control status, Control details, Control more, Control mark, bool running)
         {
             RowDefinitions = new RowDefinitions("Auto,Auto,Auto");
@@ -37,10 +38,12 @@ namespace DeskPicker
             var tabB = new Border { Child = tab, Padding = new Thickness(18, 8, 18, 9), CornerRadius = new CornerRadius(11, 11, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, -1) };
             tabB.SetResourceReference(Border.BackgroundProperty, "ManilaBack");
             var head = new DockPanel();
-            status.Margin = new Thickness(12, 0, 0, 8);
-            status.VerticalAlignment = VerticalAlignment.Bottom;
-            DockPanel.SetDock(status, Dock.Right);
-            head.Children.Add(status);
+            status.VerticalAlignment = VerticalAlignment.Center;
+            var side = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(12, 0, -6, 2), VerticalAlignment = VerticalAlignment.Bottom };
+            side.Children.Add(status);
+            side.Children.Add(more);
+            DockPanel.SetDock(side, Dock.Right);
+            head.Children.Add(side);
             head.Children.Add(tabB);
 
             // ---- the pocket: back, pages, front flap ----
@@ -50,33 +53,32 @@ namespace DeskPicker
             back.SetResourceReference(Border.BackgroundProperty, "ManilaBack");
             pocket.Children.Add(back);
 
-            pageA = Page("Paper2", new Thickness(16, 0, 26, 0));
-            pageB = Page("Paper", new Thickness(16, 0, 26, 0));
-            pageC = Page("Paper3", new Thickness(30, 0, 14, 0));
+            // The pages live in a layer clipped to the folder (plus a sliver over the tab's foot),
+            // so however they move they never show past its sides or below it.
+            var pages = new Panel { ClipToBounds = true, Margin = new Thickness(0, -PageRise, 0, 0) };
+            pageA = Page("Paper2", new Thickness(14, PageRise, 24, 0));
+            pageB = Page("Paper", new Thickness(14, PageRise, 24, 0));
+            pageC = Page("Paper3", new Thickness(26, PageRise, 12, 0));
             pageB.SetResourceReference(Border.BorderBrushProperty, "Accent");
             breath = new Panel { RenderTransform = new TranslateTransform() };
             breath.Children.Add(pageB);
-            pocket.Children.Add(pageA);
-            pocket.Children.Add(breath);
-            pocket.Children.Add(pageC);
+            pages.Children.Add(pageA);
+            pages.Children.Add(breath);
+            pages.Children.Add(pageC);
+            pocket.Children.Add(pages);
 
-            var flap = new Grid();
-            var rows = details;
-            rows.Margin = new Thickness(0, 0, 34, 0);
-            rows.VerticalAlignment = VerticalAlignment.Top;
-            flap.Children.Add(rows);
-            more.HorizontalAlignment = HorizontalAlignment.Right;
-            more.VerticalAlignment = VerticalAlignment.Top;
-            more.Margin = new Thickness(0, -10, -10, 0);
-            flap.Children.Add(more);
-            mark.HorizontalAlignment = HorizontalAlignment.Right;
-            mark.VerticalAlignment = VerticalAlignment.Bottom;
-            mark.Margin = new Thickness(0, 0, -8, -6);
+            // the details on the left, the embossed mark (the Open button) on the right
+            var flap = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+            details.VerticalAlignment = VerticalAlignment.Center;
+            flap.Children.Add(details);
+            mark.VerticalAlignment = VerticalAlignment.Center;
+            mark.Margin = new Thickness(8, -8, -8, -8);
+            Grid.SetColumn(mark, 1);
             flap.Children.Add(mark);
 
             var front = new Border
             {
-                Child = flap, MinHeight = 194, Padding = new Thickness(18, 16, 18, 14), Margin = new Thickness(0, 22, 0, 0),
+                Child = flap, Padding = new Thickness(18, 15, 18, 15), Margin = new Thickness(0, 22, 0, 0),
                 CornerRadius = new CornerRadius(6, 6, 13, 13), BorderThickness = new Thickness(0, 1, 0, 0),
                 BoxShadow = new BoxShadows(new BoxShadow { OffsetY = -2, Blur = 8, Color = Color.FromArgb(51, 60, 40, 10) }),
             };
@@ -84,12 +86,12 @@ namespace DeskPicker
             front.SetResourceReference(Border.BorderBrushProperty, "ManilaEdge");
             pocket.Children.Add(front);
 
-            roots = new Roots { Height = 64, Margin = new Thickness(0, -3, 0, 0), IsHitTestVisible = false };
+            roots = new Roots { Height = 56, Margin = new Thickness(0, -3, 0, 0), IsHitTestVisible = false };
             Grid.SetRow(roots, 2);
 
-            // the tab draws over the pages, so a page rising out of the folder slips behind it
-            Children.Add(pocket);
+            // the pages stand in front of the tab, as in a real folder
             Children.Add(head);
+            Children.Add(pocket);
             Children.Add(roots);
 
             roots.Grown = on ? Roots.FullyGrown : 0;
@@ -111,7 +113,7 @@ namespace DeskPicker
             }
             var b = new Border
             {
-                Child = lines, Height = 90, VerticalAlignment = VerticalAlignment.Top, Margin = margin, CornerRadius = new CornerRadius(4, 4, 0, 0),
+                Child = lines, Height = 70, VerticalAlignment = VerticalAlignment.Top, Margin = margin, CornerRadius = new CornerRadius(4, 4, 0, 0),
                 RenderTransformOrigin = new RelativePoint(0.5, 1, RelativeUnit.Relative),
                 Transitions = new Transitions { new TransformOperationsTransition { Property = Visual.RenderTransformProperty, Duration = PageTime, Easing = Spring } },
             };
@@ -131,10 +133,11 @@ namespace DeskPicker
 
         void Apply()
         {
-            // open, the pages stand well out of the folder; under the pointer they fan out
-            pageA.RenderTransform = TransformOperations.Parse(on ? (hover ? "translate(-24px,-40px) rotate(-10deg)" : "translate(0px,-20px) rotate(-3deg)") : (hover ? "translate(-20px,-20px) rotate(-9deg)" : "translate(0px,10px) rotate(0deg)"));
-            pageB.RenderTransform = TransformOperations.Parse(on ? (hover ? "translate(0px,-42px) rotate(0deg)" : "translate(0px,-32px) rotate(0deg)") : (hover ? "translate(0px,-28px) rotate(0deg)" : "translate(0px,6px) rotate(0deg)"));
-            pageC.RenderTransform = TransformOperations.Parse(on ? (hover ? "translate(24px,-36px) rotate(9deg)" : "translate(0px,-16px) rotate(3deg)") : (hover ? "translate(20px,-18px) rotate(8deg)" : "translate(0px,12px) rotate(0deg)"));
+            // Closed, the pages sit low in the folder; open, they stand up in its mouth; under
+            // the pointer they lift and fan a little. They rise at most to the tab's foot.
+            pageA.RenderTransform = TransformOperations.Parse(on ? (hover ? "translate(-5px,-7px) rotate(-2.5deg)" : "translate(0px,-2px) rotate(-1deg)") : (hover ? "translate(-5px,-3px) rotate(-2.5deg)" : "translate(0px,9px) rotate(0deg)"));
+            pageB.RenderTransform = TransformOperations.Parse(on ? (hover ? "translate(0px,-8px) rotate(0deg)" : "translate(0px,-4px) rotate(0deg)") : (hover ? "translate(0px,-6px) rotate(0deg)" : "translate(0px,6px) rotate(0deg)"));
+            pageC.RenderTransform = TransformOperations.Parse(on ? (hover ? "translate(5px,-6px) rotate(2.5deg)" : "translate(0px,0px) rotate(1deg)") : (hover ? "translate(5px,-2px) rotate(2.5deg)" : "translate(0px,11px) rotate(0deg)"));
             pageB.BorderThickness = new Thickness(0, on ? 3 : 0, 0, 0);
         }
 
@@ -160,7 +163,7 @@ namespace DeskPicker
             roots.Grown = on ? Math.Min(Roots.FullyGrown, roots.Grown + dt) : Math.Max(0, roots.Grown - dt * 2);
             roots.Clock = now.TotalSeconds;
             roots.InvalidateVisual();
-            ((TranslateTransform)breath.RenderTransform).Y = on ? -3.5 * (1 - Math.Cos(now.TotalSeconds * 2 * Math.PI / 3.4)) : 0;
+            ((TranslateTransform)breath.RenderTransform).Y = on ? -1.2 * (1 - Math.Cos(now.TotalSeconds * 2 * Math.PI / 3.4)) : 0;
 
             if (on || roots.Grown > 0) top.RequestAnimationFrame(Frame);
             else looping = false;

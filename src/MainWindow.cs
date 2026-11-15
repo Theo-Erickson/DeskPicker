@@ -195,10 +195,9 @@ namespace DeskPicker
             folder.Tip(Profiles.DataDirOf(p));
 
             // The embossed GitHub mark in the flap's corner is the Open / Show window button.
-            var mark = Ui.EmbossedMark(on ? "Show window" : "Open", on, delegate { Open(p); });
+            var mark = Ui.EmbossedMark(on ? "Show " + p.name + "'s GitHub Desktop window" : "Open " + p.name + " in GitHub Desktop", on, delegate { Open(p); });
             Avalonia.Automation.AutomationProperties.SetName(mark, (on ? "Show " : "Open ") + p.name);
-            mark.Tip(on ? "Bring " + p.name + "'s GitHub Desktop forward" : "Open " + p.name + " in GitHub Desktop");
-            var more = Ui.IconBtn("more", null, null, "BtnRoundInk", "InkSub");
+            var more = Ui.IconBtn("more", null, null, "BtnRound", "Muted");
             more.Tip("More");
             Avalonia.Automation.AutomationProperties.SetName(more, "More for " + p.name);
             more.Click += delegate { ShowMenu(more, p); };
@@ -226,7 +225,7 @@ namespace DeskPicker
             sub.VerticalAlignment = VerticalAlignment.Center;
             sub.TextAlignment = TextAlignment.Center;
             // as tall as a profile folder, without the room their branches take below
-            var b = new Button { Theme = Ui.Theme("Bare"), Content = Ui.Folder(tab, sub, null, false, true), MinHeight = 254, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, FolderCard.Headroom, 0, 0) };
+            var b = new Button { Theme = Ui.Theme("Bare"), Content = Ui.Folder(tab, sub, null, false, true), MinHeight = 176, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, FolderCard.Headroom, 0, 0) };
             Avalonia.Automation.AutomationProperties.SetName(b, "Add a new profile");
             b.Click += delegate { AddProfile(); };
             return b;
