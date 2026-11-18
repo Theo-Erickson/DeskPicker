@@ -21,7 +21,7 @@ namespace DeskPicker
             // a sheet of paper between them, and brown "ink" for what's written on the front
             {"ManilaBack","#c4a466"}, {"Manila","#e8d29e"}, {"ManilaEdge","#f5e7c2"},
             {"Paper","#f6f1e4"}, {"Paper2","#ece5d2"}, {"Paper3","#fbf8ef"}, {"PaperLine","#14000000"},
-            {"Ink","#241a0b"}, {"InkSub","#3d2f17"}, {"InkMuted","#6a5531"}, {"InkWarn","#8e4a00"}, {"InkHover","#1e3c280a"},
+            {"Ink","#241a0b"}, {"InkSub","#3d2f17"}, {"InkMuted","#6a5531"}, {"InkWarn","#8e4a00"}, {"InkOk","#2f6b22"}, {"InkLink","#1d4f91"}, {"InkHover","#1e3c280a"},
             // the GitHub mark pressed into the flap, and its color while the profile runs
             {"EmbossLo","#d5ba7c"}, {"EmbossHi","#fbf0d2"}, {"EmbossLit","#c8ab68"},
         };

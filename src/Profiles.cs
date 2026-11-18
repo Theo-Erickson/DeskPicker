@@ -130,6 +130,13 @@ namespace DeskPicker
             foreach (var d in Directory.GetDirectories(from)) CopyTree(d, Path.Combine(to, Path.GetFileName(d)));
         }
 
+        // Opens a web page in the default browser.
+        public static void OpenUrl(string url)
+        {
+            if (OperatingSystem.IsWindows()) Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            else Process.Start(OperatingSystem.IsMacOS() ? "open" : "xdg-open", "\"" + url + "\"");
+        }
+
         public static void OpenFolder(string dir)
         {
             if (OperatingSystem.IsWindows()) Process.Start("explorer.exe", "\"" + dir + "\"");

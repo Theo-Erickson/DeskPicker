@@ -178,21 +178,53 @@ namespace DeskPicker
             name.Tip(p.name);
             var pill = on ? Ui.Pill("Running", "RunBg", "OkText", "DotOk") : Ui.Pill(Profiles.IsDefault(p) ? "Closed · default" : "Closed", "Panel", "Muted");
 
-            string account, accountBrush = "Ink";
-            if (string.IsNullOrEmpty(p.githubLogin)) { account = "No GitHub account set"; accountBrush = "InkMuted"; }
-            else if (signedIn == null) account = p.githubLogin;
-            else if (signedIn.Contains(p.githubLogin)) account = p.githubLogin + " · signed in";
-            else { account = p.githubLogin + " · not signed in yet"; accountBrush = "InkWarn"; }
+            // 1. the account, with a check once Desktop has its sign-in (a warning if not yet)
+            bool hasLogin = !string.IsNullOrEmpty(p.githubLogin);
+            var account = Ui.Line(null, 15.5, hasLogin ? "Ink" : "InkMuted", FontWeights.Medium);
+            account.Inlines.Add(new Avalonia.Controls.Documents.Run(hasLogin ? p.githubLogin : "No GitHub account set"));
+            string accountTip = hasLogin ? p.githubLogin : "Set the account in Edit...";
+            if (hasLogin && signedIn != null)
+            {
+                bool ok = signedIn.Contains(p.githubLogin);
+                var badge = Ui.Icon(ok ? "check" : "alert", 15, ok ? "InkOk" : "InkWarn", 2.4);
+                badge.Margin = new Thickness(7, 0, 0, -2);
+                account.Inlines.Add(new Avalonia.Controls.Documents.InlineUIContainer(badge));
+                accountTip = p.githubLogin + (ok ? " · signed in" : " · not signed in yet: open " + p.name + " and sign in");
+            }
 
-            string commits = GitIdentity.Has(p)
-                ? ((p.gitName ?? "(global name)") + " <" + (p.gitEmail ?? "global email") + ">")
-                : "Your global git identity";
+            // 2-3. the commit identity: name, then email beneath it. Without its own, the
+            // profile commits as your global git config says, so show what that is.
+            var global = GitIdentity.Global();
+            bool own = GitIdentity.Has(p);
+            string gitName = (own ? p.gitName : null) ?? global.name;
+            string gitEmail = (own ? p.gitEmail : null) ?? global.email;
+            var commitName = Ui.Line(gitName ?? "Your global git identity", 15.5, "Ink", FontWeights.Medium);
+            var commitEmail = Ui.Line(gitEmail ?? "No email set", 13.5, gitEmail == null ? "InkMuted" : "InkSub");
+            string identitySource = own ? "This profile's commit identity" : "Your global git identity (~/.gitconfig)";
 
-            // The end of the path is the part that tells profiles apart, so trim the start.
+            // 4. the data folder: its end is the part that tells profiles apart, so trim the start
             var folder = Ui.Line(Profiles.IsDefault(p) ? "Desktop's default folder" : p.dataDir, 13, "InkSub");
             folder.FontFamily = Ui.Mono;
             folder.TextTrimming = TextTrimming.PrefixCharacterEllipsis;
-            folder.Tip(Profiles.DataDirOf(p));
+
+            // 5. the account's page on github.com
+            Control web = null;
+            string login = hasLogin ? System.Text.RegularExpressions.Regex.Replace(p.githubLogin, "[^A-Za-z0-9-]", "") : "";
+            if (login.Length > 0)
+            {
+                string url = "https://github.com/" + login;
+                var linkText = Ui.Line("github.com/" + login, 13.5, "InkLink", FontWeights.Medium);
+                var link = new Button { Theme = Ui.Theme("Bare"), Content = linkText, HorizontalAlignment = HorizontalAlignment.Left };
+                link.PointerEntered += delegate { linkText.TextDecorations = TextDecorations.Underline; };
+                link.PointerExited += delegate { linkText.TextDecorations = null; };
+                link.Click += delegate { try { Profiles.OpenUrl(url); } catch { } };
+                Avalonia.Automation.AutomationProperties.SetName(link, "Open " + login + " on github.com");
+                web = Ui.IconLine("link", linkText, 10, "InkMuted");
+                ((Grid)web).Children.Remove(linkText);
+                Grid.SetColumn(link, 1);
+                ((Grid)web).Children.Add(link);
+                link.Tip(url);
+            }
 
             // The embossed GitHub mark in the flap's corner is the Open / Show window button.
             var mark = Ui.EmbossedMark(on ? "Show " + p.name + "'s GitHub Desktop window" : "Open " + p.name + " in GitHub Desktop", on, delegate { Open(p); });
@@ -202,10 +234,17 @@ namespace DeskPicker
             Avalonia.Automation.AutomationProperties.SetName(more, "More for " + p.name);
             more.Click += delegate { ShowMenu(more, p); };
 
-            var body = Ui.Stack(9,
-                Ui.IconLine("user", Ui.Line(account, 15.5, accountBrush, FontWeights.Medium), 10, "InkMuted"),
-                Ui.IconLine("commit", Ui.Line(commits, 15.5, "Ink", FontWeights.Medium), 10, "InkMuted"),
-                folder);
+            var body = Ui.Stack(7,
+                Ui.IconLine("user", account, 10, "InkMuted"),
+                Ui.IconLine("commit", commitName, 10, "InkMuted"),
+                Ui.IconLine("mail", commitEmail, 10, "InkMuted"),
+                Ui.IconLine("folder", folder, 10, "InkMuted"));
+            if (web != null) body.Children.Add(web);
+            // IconLine tips each line with its text; these say more
+            account.Tip(accountTip);
+            commitName.Tip(identitySource);
+            commitEmail.Tip(identitySource);
+            folder.Tip(Profiles.DataDirOf(p));
 
             // A profile that just opened or closed is built in its old state and then switched,
             // so its folder animates open (or shut) instead of appearing that way. On the first
@@ -225,7 +264,7 @@ namespace DeskPicker
             sub.VerticalAlignment = VerticalAlignment.Center;
             sub.TextAlignment = TextAlignment.Center;
             // as tall as a profile folder, without the room their branches take below
-            var b = new Button { Theme = Ui.Theme("Bare"), Content = Ui.Folder(tab, sub, null, false, true), MinHeight = 176, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, FolderCard.Headroom, 0, 0) };
+            var b = new Button { Theme = Ui.Theme("Bare"), Content = Ui.Folder(tab, sub, null, false, true), MinHeight = 217, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, FolderCard.Headroom, 0, 0) };
             Avalonia.Automation.AutomationProperties.SetName(b, "Add a new profile");
             b.Click += delegate { AddProfile(); };
             return b;

@@ -258,6 +258,9 @@ namespace DeskPicker
             { "user", "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M4.5 20a7.5 7.5 0 0 1 15 0" },
             { "commit", "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M3 12h6 M15 12h6" },
             { "move", "M5 12h12 M13 7l5 5-5 5 M4 5v14" },
+            { "check", "M5 12.5l4.5 4.5L19 7" },
+            { "mail", "M4 6.5h16v11H4z M4.5 7l7.5 6 7.5-6" },
+            { "link", "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1 M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" },
         };
 
         public static Control Icon(string name, double size = 18, string brush = "Muted", double stroke = 1.8)

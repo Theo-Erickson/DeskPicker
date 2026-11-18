@@ -13,6 +13,29 @@ namespace DeskPicker
     {
         static readonly string Dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".deskpicker");
 
+        // The name and email in your global ~/.gitconfig's [user] section (either may be null).
+        // Read straight from the file: it's what a profile without its own identity commits as.
+        public static (string name, string email) Global()
+        {
+            string name = null, email = null;
+            try
+            {
+                string file = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".gitconfig");
+                bool inUser = false;
+                foreach (var raw in File.ReadAllLines(file))
+                {
+                    string line = raw.Trim();
+                    if (line.StartsWith("[")) { inUser = Regex.IsMatch(line, @"^\[\s*user\s*\]$", RegexOptions.IgnoreCase); continue; }
+                    if (!inUser) continue;
+                    var m = Regex.Match(line, @"^(name|email)\s*=\s*""?(.*?)""?\s*$", RegexOptions.IgnoreCase);
+                    if (!m.Success) continue;
+                    if (m.Groups[1].Value.ToLowerInvariant() == "name") name = m.Groups[2].Value; else email = m.Groups[2].Value;
+                }
+            }
+            catch { }
+            return (string.IsNullOrWhiteSpace(name) ? null : name, string.IsNullOrWhiteSpace(email) ? null : email);
+        }
+
         public static bool Has(Profile p)
         {
             return !string.IsNullOrWhiteSpace(p.gitName) || !string.IsNullOrWhiteSpace(p.gitEmail);
