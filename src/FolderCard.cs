@@ -175,20 +175,24 @@ namespace DeskPicker
     // Drawn in a 320x88 box, scaled to fit and centered.
     class Roots : Control
     {
-        public const double FullyGrown = 1.6;   // seconds of growing until everything is out
+        public const double FullyGrown = 1.9;   // seconds of growing until everything is out
 
+        // Like a git graph: a trunk, two branches off it, and one off each of those. Each
+        // branch starts exactly on its parent's line and runs straight down after its curve.
         static readonly (string path, double delay)[] Branches =
         {
-            ("M160 0 V84", 0),
-            ("M160 10 C160 26 112 18 112 36 V60", 0.12),
-            ("M160 18 C160 34 214 26 214 44 V70", 0.24),
-            ("M112 36 C112 50 66 44 66 62 V78", 0.36),
-            ("M214 44 C214 58 256 52 256 66", 0.48),
-            ("M112 60 C112 72 160 64 160 76", 0.5),
+            ("M160 0 V84", 0),                                 // trunk
+            ("M160 12 C160 26 104 20 104 36 V74", 0.1),        // left, from the trunk
+            ("M160 30 C160 44 216 38 216 50 V78", 0.3),        // right, from the trunk
+            ("M104 44 C104 56 60 52 60 64 V78", 0.55),         // from the left branch
+            ("M216 56 C216 66 258 62 258 72", 0.65),           // from the right branch
         };
+        // Commits sit where a branch starts (on its parent's line) and at each branch's tip,
+        // popping in as the growing line reaches them.
         static readonly (double x, double y, double delay)[] Nodes =
         {
-            (160, 46, 0.7), (112, 48, 0.8), (214, 58, 0.9), (66, 78, 1.0), (256, 66, 1.05), (160, 84, 1.1),
+            (160, 12, 0.15), (160, 30, 0.35), (104, 44, 0.6), (216, 56, 0.75),
+            (160, 84, 0.95), (104, 74, 1.05), (216, 78, 1.25), (60, 78, 1.5), (258, 72, 1.55),
         };
         static readonly Geometry[] Shapes = Array.ConvertAll(Branches, b => Geometry.Parse(b.path));
         static readonly Easing Ease = new CubicEaseInOut(), Pop = new BackEaseOut();

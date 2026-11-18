@@ -228,13 +228,14 @@ namespace DeskPicker
             c.Children.Add(lo);
             var art = new Grid { Width = 52, Height = 52 };
             art.Classes.Add("emboss");
+            art.Children.Add(new Viewbox { Child = c, Margin = new Thickness(6, 5, 6, 7) });
             if (lit)
             {
-                var ring = new Ellipse { StrokeThickness = 2 };
+                // drawn last, so the mark's light edge never covers any of it
+                var ring = new Ellipse { StrokeThickness = 2.5 };
                 ring.SetResourceReference(Shape.StrokeProperty, "Accent");
                 art.Children.Add(ring);
             }
-            art.Children.Add(new Viewbox { Child = c, Margin = new Thickness(4) });
             var b = new Button { Theme = Theme("Bare"), Content = art, Padding = new Thickness(4) };
             b.Tip(label);
             b.Classes.Add("mark");
